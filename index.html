@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SarkariCMS — Government Jobs Portal, Results & Admit Card</title>
+    <!-- Fonts Import -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // Fix for sandboxed fetch getter
+      (function() {
+        try {
+          const orig = window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() { return orig ? orig.bind(window) : undefined; },
+            set: function(val) { /* ignore to prevent Cannot set property error */ },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn('Could not patch window.fetch', e);
+        }
+        try {
+          if (typeof globalThis !== 'undefined') {
+            const origG = globalThis.fetch;
+            Object.defineProperty(globalThis, 'fetch', {
+              get: function() { return origG ? origG.bind(globalThis) : undefined; },
+              set: function(val) { },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch(e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-[#F4F6FF] dark:bg-[#080B14] text-[#0F172A] dark:text-[#F1F5FF] antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

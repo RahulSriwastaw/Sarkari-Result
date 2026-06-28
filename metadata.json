@@ -1,0 +1,6 @@
+{
+  "name": "Sarkari Job Update CMS",
+  "description": "Sarkari Job Update CMS & Student Portal. Features direct manual posting, live alerts for latest exams, results, and syllabus, and robust job listing administration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
