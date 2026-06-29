@@ -1398,12 +1398,15 @@ TERA KAAM:
 1. Scraped text/URL se identify kar ki KAUNSI job hai, KAUNSA department hai
 2. Apni knowledge + Google Search (agar available) se VERIFY kar — dates, fees, vacancy, eligibility SAB cross-check kar
 3. Verified data ke basis par 100% ORIGINAL post likh — KUCH BHI copy mat kar source se
-4. Post simple Hindi-English mix mein likh — student ko samajh aaye
+4. Post ENGLISH mein likh — professional, easy to read, mobile friendly
 
 WRITING RULES:
-- Simple Hindi-English mix mein likho, koi fancy shabd nahi
-- "सुनहरा अवसर", "अत्यंत महत्वपूर्ण", "अभ्यर्थियों को सूचित" — ye sab BANNED phrases hain
-- Short sentences, mobile pe easy to read
+- Write ONLY in English — simple, easy to understand
+- Short sentences, mobile-friendly, no complex jargon
+- Numbers highlight karo: 50,000 Posts, ₹25,000 salary
+- Tone: helpful and professional, like an advisor guiding a student
+- Content: 500-800 words in bilingual_html
+- NO Hindi, NO Hinglish in the post body — pure English only
 - Numbers highlight karo: 50,000 पद, ₹25,000 salary
 - Dates clearly mention karo with full context
 - Tone: helpful dost jaisa jo senior student ko guide kar raha hai, formal government letter jaisa NAHI
@@ -1435,7 +1438,7 @@ CATEGORY DISAMBIGUATION (IMPORTANT):
 OUTPUT FORMAT — Ye exact JSON return kar:
 {
   "title_en": "Real SEO title with department + post + year (e.g. 'Indian Navy SSC Officer Recruitment June 2027: Apply Online')",
-  "title_hi": "Same in Hinglish (e.g. 'Indian Navy SSC Officer Bharti June 2027 Online Form')",
+  "title_hi": "Same title in simple English or leave empty",
   "post_name": "Actual official post name (e.g. 'SSC Officer - Executive/Technical Branch')",
   "department": "Full official department (e.g. 'Indian Navy')",
   "advt_no": "Advertisement number if available or null",
@@ -1451,7 +1454,7 @@ OUTPUT FORMAT — Ye exact JSON return kar:
   "result_link": "",
   "official_website": ".gov.in domain ONLY or empty string",
   "short_info_en": "2-3 lines key info (vacancies, last date, qualification)",
-  "short_info_hi": "Same in simple Hindi",
+  "short_info_hi": "Same summary in English",
   "state": ["All India"],
   "level": "National",
   "suggested_category": "defence/ssc/railway/banking/upsc/state-psc/police/teaching — based on ACTUAL department",
@@ -1492,9 +1495,9 @@ DATA REPEAT RULES (STRICT):
 
 FAQ SECTION RULES:
 - 5-8 FAQs generate karo jo is SPECIFIC post se related hon
-- Har FAQ ek real question ho jo student puchega (simple Hindi-English mix mein)
-- Examples: "Kya ITI pass apply kar sakta hai?", "Iska selection process kya hai?", "Kitni fees lagegi?", "Age limit mein relaxation milega kya OBC ko?"
-- Answers short aur to-the-point hon (2-3 lines max)
+- All FAQs MUST be in ENGLISH only
+- Examples: "Can ITI pass candidates apply?", "What is the selection process?", "How much is the application fee?", "Is there age relaxation for OBC?"
+- Answers short and to-the-point (2-3 lines max) in English
 - FAQ section mein HTML <details>/<summary> tags use karo (dropdown accordion style)
 - FAQs mein bhi SEO keywords naturally daal (ye Google Featured Snippet mein rank karte hain)
 
@@ -1547,7 +1550,7 @@ HTML TEMPLATE:
         <span>[Question 1 — related to this specific post, e.g. "Is post ka last date kya hai?"]</span>
         <span class="text-primary text-sm">+</span>
       </summary>
-      <div class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900">[Answer — simple Hindi-English mix mein]</div>
+      <div class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900">[Answer in English — clear and concise]</div>
     </details>
     <details class="group border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
       <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center justify-between">
@@ -1562,7 +1565,7 @@ HTML TEMPLATE:
 <div class="sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" aria-hidden="false">
   <h2>Search Tags:</h2>
   <div class="flex flex-wrap gap-1.5">
-    [20+ keyword spans — English, Hindi Devnagari, Hinglish — department name, post name, bharti, vacancy, online form, sarkari result etc]
+    [20+ keyword spans — English, Hindi Devnagari, Hinglish — for hidden SEO tags only (not visible to users)]
   </div>
 </div>
 
