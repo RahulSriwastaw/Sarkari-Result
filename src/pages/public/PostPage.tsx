@@ -8,8 +8,10 @@ import {
 } from 'lucide-react';
 import { getPostBySlug, getPosts, recordPostView, recordPostApplyClick } from '../../lib/supabase';
 import { Post } from '../../lib/types';
+import { useLanguage } from '../../lib/LanguageContext';
 
 export default function PostPage() {
+  const { language, t } = useLanguage();
   const { slug } = useParams<{ slug: string }>();
   const [post, setPost] = useState<Post | null>(null);
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
@@ -270,14 +272,12 @@ export default function PostPage() {
               )}
               
               <div className="space-y-1">
-                <h1 className="text-xl sm:text-2xl font-hindi font-bold tracking-tight text-slate-800 dark:text-white leading-snug">
-                  {post.title_hindi || post.title}
+                <h1 className={`text-xl sm:text-2xl font-bold tracking-tight text-slate-800 dark:text-white leading-snug ${language === 'hi' ? 'font-hindi' : 'font-sans'}`}>
+                  {language === 'hi' ? (post.title_hi || post.title_hindi || post.title) : (post.title || post.title_en)}
                 </h1>
-                {post.title_hindi && (
-                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
-                    {post.title}
-                  </p>
-                )}
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
+                  {language === 'hi' ? (post.title || post.title_en) : (post.title_hi || post.title_hindi)}
+                </p>
               </div>
             </div>
 
@@ -679,8 +679,8 @@ export default function PostPage() {
                     {rp.exam_type}
                   </span>
                   <Link to={`/job/${rp.slug}`} className="block">
-                    <h4 className="font-hindi font-bold text-sm text-slate-800 dark:text-white line-clamp-2 hover:text-primary transition-colors">
-                      {rp.title_hindi || rp.title}
+                    <h4 className={`font-bold text-sm text-slate-800 dark:text-white line-clamp-2 hover:text-primary transition-colors ${language === 'hi' ? 'font-hindi' : 'font-sans'}`}>
+                      {language === 'hi' ? (rp.title_hi || rp.title_hindi || rp.title) : (rp.title || rp.title_en)}
                     </h4>
                   </Link>
                 </div>

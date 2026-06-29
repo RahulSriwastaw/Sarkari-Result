@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Briefcase, GraduationCap, ChevronRight, Share2, Bookmark, Loader2, IndianRupee } from 'lucide-react';
+import { Calendar, Briefcase, GraduationCap, ChevronRight, Share2, Bookmark, Loader2, IndianRupee, Languages } from 'lucide-react';
 import { Post, Profile, isNewPost, isClosingSoonPost, isHighSalaryPost } from '../lib/types';
+import { useLanguage } from '../lib/LanguageContext';
 import { checkEligibility } from '../lib/eligibility';
 import { toBlob } from 'html-to-image';
 import { saveJob, unsaveJob, isJobSaved } from '../lib/supabase';
@@ -13,6 +14,7 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post, profile }: PostCardProps) {
+  const { language, t } = useLanguage();
   const isNew = isNewPost(post);
   const isClosing = isClosingSoonPost(post);
   const isHighSalary = isHighSalaryPost(post);
@@ -299,20 +301,14 @@ export default function PostCard({ post, profile }: PostCardProps) {
           )}
 
           <Link to={`/job/${post.slug}`} className="block group flex-1 min-w-0">
-            {post.title_hindi ? (
-              <div className="space-y-0.5">
-                <h2 className="font-hindi font-bold text-sm text-slate-800 dark:text-slate-100 group-hover:text-primary transition-colors line-clamp-2 leading-snug">
-                  {post.title_hindi}
-                </h2>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
-                  {post.title}
-                </p>
-              </div>
-            ) : (
-              <h2 className="font-sans font-bold text-sm text-slate-800 dark:text-slate-100 group-hover:text-primary transition-colors line-clamp-2 leading-snug">
-                {post.title}
+            <div className="space-y-0.5">
+              <h2 className={`font-bold text-sm text-slate-800 dark:text-slate-100 group-hover:text-primary transition-colors line-clamp-2 leading-snug ${language === 'hi' ? 'font-hindi' : 'font-sans'}`}>
+                {language === 'hi' ? (post.title_hi || post.title_hindi || post.title) : (post.title || post.title_en)}
               </h2>
-            )}
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {language === 'hi' ? (post.title || post.title_en) : (post.title_hi || post.title_hindi)}
+              </p>
+            </div>
           </Link>
         </div>
  

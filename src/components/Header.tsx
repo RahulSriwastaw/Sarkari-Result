@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Menu, X, ShieldAlert, Globe, User } from 'lucide-react';
+import { Search, Menu, X, ShieldAlert, Globe, User, Languages } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import { useLanguage } from '../lib/LanguageContext';
 import { getCategories } from '../lib/supabase';
 import { Category } from '../lib/types';
 
 export default function Header() {
+  const { language, setLanguage } = useLanguage();
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -129,6 +131,16 @@ export default function Header() {
             >
               <User className="w-4 h-4" />
             </Link>
+            <button 
+              onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-all group"
+              title={language === 'en' ? 'Switch to Hindi' : 'Switch to English'}
+            >
+              <Languages className="w-4 h-4 text-primary" />
+              <span className="text-[11px] font-bold uppercase tracking-tight">
+                {language === 'en' ? 'Hindi' : 'English'}
+              </span>
+            </button>
             <ThemeToggle />
             
             {/* Google Translate Integration */}
