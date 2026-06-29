@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { updateProfile, getCurrentUser } from '../lib/supabase';
 import { Profile } from '../lib/types';
 import { toast } from 'react-hot-toast';
 
@@ -10,26 +10,37 @@ interface ProfileFormProps {
 
 export default function ProfileForm({ profile, onUpdate }: ProfileFormProps) {
   const [formData, setFormData] = useState({
-    name: profile?.name || '',
-    dob: profile?.dob || '',
-    qualification: profile?.qualification || '',
-    category: profile?.category || '',
-    state: profile?.state || '',
+    name: '',
+    dob: '',
+    qualification: '',
+    category: '',
+    state: '',
   });
+
+  // Sync state with profile prop if profile loads after initial mount
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        name: profile.name || '',
+        dob: profile.dob || '',
+        qualification: profile.qualification || '',
+        category: profile.category || '',
+        state: profile.state || '',
+      });
+    }
+  }, [profile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const user = await getCurrentUser();
+    const profileId = profile?.id || (user ? (user.uid || user.email) : null);
+    if (!profileId) {
+      toast.error('You must be logged in to save your profile.');
+      return;
+    }
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: profile?.id,
-          ...formData,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) throw error;
-      toast.success('Profile updated successfully!');
+      await updateProfile(profileId, formData);
+      toast.success('Profile saved successfully!');
       onUpdate();
     } catch (error) {
       console.error('Error updating profile:', error);

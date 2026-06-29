@@ -70,7 +70,7 @@ export default function NewsletterSubscription() {
             <span>Never Miss an Update</span>
           </div>
           <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-            Get Instant Sarkari Job Alerts in Your Inbox
+            Get Instant Job Alerts in Your Inbox
           </h3>
           <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
             Subscribe to receive daily updates on latest Government recruitments, admit cards, exam results, and answer keys. Zero spam, direct links only.

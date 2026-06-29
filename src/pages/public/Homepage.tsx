@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import { Megaphone, RefreshCw, Layers, Sparkles, SlidersHorizontal, Search } from 'lucide-react';
-import { getPosts, getCategories, isDemoMode, getCurrentUser, getProfile } from '../../lib/supabase';
+import { getPosts, getCategories, getCurrentUser, getProfile } from '../../lib/supabase';
 import { Post, Category, Profile, isNewPost, isClosingSoonPost, isHighSalaryPost } from '../../lib/types';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
-import NewsletterSubscription from '../../components/NewsletterSubscription';
 import CategoryPill from '../../components/CategoryPill';
 import ProfileSetupModal from '../../components/ProfileSetupModal';
-import FAQ from '../../components/FAQ';
-import SalaryCalculator from '../../components/SalaryCalculator';
+import SEO from '../../components/SEO';
 
 export default function Homepage() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -22,11 +19,11 @@ export default function Homepage() {
   const [tickerPosts, setTickerPosts] = useState<Post[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'closing' | 'salary'>('all');
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     setVisibleCount(6);
   }, [activeFilter]);
-
 
   useEffect(() => {
     async function loadData() {
@@ -44,12 +41,16 @@ export default function Homepage() {
         setCategories(allCats);
         
         // Fetch profile
-        const user = getCurrentUser();
+        const user = await getCurrentUser();
         if (user) {
-          const profileData = await getProfile(user.email); 
+          const profileId = user.uid || user.email;
+          const profileData = await getProfile(profileId); 
           setProfile(profileData);
-          if (profileData && (!profileData.qualification || !profileData.dob || !profileData.category)) {
+          const lastShown = localStorage.getItem('lastProfileModalShownDate');
+          const today = new Date().toDateString();
+          if (profileData && (!profileData.qualification || !profileData.dob || !profileData.category) && lastShown !== today) {
             setShowProfileModal(true);
+            localStorage.setItem('lastProfileModalShownDate', today);
           }
         }
       } catch (err) {
@@ -76,13 +77,21 @@ export default function Homepage() {
     return true;
   });
 
+  const searchResults = searchTerm
+    ? posts.filter(
+        (post) =>
+          (post.title || post.title_en || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+          ((post.title_hindi || post.title_hi) && (post.title_hindi || post.title_hi).toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    : [];
 
   return (
     <div className="space-y-6">
-      <Helmet>
-        <title>SarkariCMS - Latest Government Job Alerts & Recruitment</title>
-        <meta name="description" content="Find the latest Sarkari Naukri, exam admit cards, results, and answer keys. Get authentic government job alerts simplified." />
-      </Helmet>
+      <SEO 
+        title="ResultVeda 2026: Sarkari Result, Latest Jobs, Admit Card, Answer Key & Government Exam Updates" 
+        description="Get the latest Sarkari Result, Government Jobs, Admit Card, Answer Key, Syllabus, Admission and Exam Updates at ResultVeda." 
+        canonical="/" 
+      />
       
       {/* 1. Breaking Ticker / Marquee */}
       {tickerPosts.length > 0 && (
@@ -104,21 +113,6 @@ export default function Homepage() {
         </div>
       )}
 
-      {/* Demo Mode Notice */}
-      {isDemoMode && (
-        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 rounded-lg p-3.5 text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base">⚡</span>
-            <div>
-              <p className="font-bold">Running in Sandbox Mode (Local Storage & Pre-seeded Jobs)</p>
-              <p className="text-blue-600/80 dark:text-blue-400/80 mt-0.5">Connect your Supabase Database credentials in Secrets to sync to PostgreSQL in real-time!</p>
-            </div>
-          </div>
-          <Link to="/admin" className="shrink-0 px-2.5 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 rounded font-semibold transition-colors">
-            Try Admin Panel
-          </Link>
-        </div>
-      )}
 
       {/* 2. Hero Banner (Anti-AI-Slop & Humanized Layout) */}
       <div className="bg-slate-900 text-white rounded-xl p-6 sm:p-8 relative overflow-hidden shadow-md">
@@ -127,14 +121,14 @@ export default function Homepage() {
         
         <div className="max-w-2xl relative z-10 space-y-4">
           <span className="badge bg-[var(--accent)]/10 text-[var(--accent-text)] border border-[var(--accent)]/20 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded">
-            🔥 #1 Sarkari Alerts Portal
+            🔥 #1 Sarkari Alerts Portal - ResultVeda
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight leading-tight">
-            Sarkari Naukri, Sabse Pehle.<br />
+            Sarkari Result, Latest Jobs & Updates.<br />
             <span className="text-[var(--accent-text)] font-hindi">सरकारी भर्ती की जानकारी हिंदी और इंग्लिश में</span>
           </h1>
           <p className="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-xl">
-            SarkariCMS aggregates and simplifies government exam advertisements directly from authentic gazettes, saving you from complex PDF jargon. Get direct application links instantly.
+            ResultVeda aggregates and simplifies government exam advertisements directly from authentic gazettes, saving you from complex PDF jargon. Get direct application links instantly.
           </p>
           <div className="flex flex-wrap gap-2 pt-2">
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
@@ -149,8 +143,17 @@ export default function Homepage() {
         </div>
       </div>
 
-      {/* Newsletter Subscription Section */}
-      <NewsletterSubscription />
+      {/* Search Bar */}
+      <div className="relative w-full">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search for jobs..."
+          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:border-primary text-slate-800 dark:text-white"
+        />
+      </div>
 
       {/* 3. Horizontal Swipable Category Filters */}
       <div className="space-y-2">
@@ -184,7 +187,7 @@ export default function Homepage() {
               📅 EXAM TRACKER
             </span>
             <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white group-hover:text-primary transition-colors">
-              Sarkari Exam Calendar 2026
+              ResultVeda Exam Calendar 2026
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Track active direct apply end dates, CBT tests, & admit card releases.
@@ -208,10 +211,6 @@ export default function Homepage() {
           <span className="text-xl group-hover:translate-x-1 transition-transform">➡️</span>
         </Link>
       </div>
-
-      <SalaryCalculator />
-
-      <FAQ />
 
       {loading ? (
         <div className="space-y-8">
@@ -239,6 +238,18 @@ export default function Homepage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : searchTerm && searchResults.length === 0 ? (
+        <div className="text-center py-16 card max-w-md mx-auto space-y-3">
+          <p className="text-2xl">🔍</p>
+          <h3 className="font-bold text-slate-800 dark:text-white">No jobs match "{searchTerm}"</h3>
+        </div>
+      ) : searchTerm ? (
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-white">Search Results ({searchResults.length})</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {searchResults.map(post => <PostCard key={post.id} post={post} profile={profile} />)}
+          </div>
         </div>
       ) : posts.length === 0 ? (
         <div className="text-center py-16 card max-w-md mx-auto space-y-3">

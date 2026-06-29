@@ -8,7 +8,7 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
-  const isFullViewportPage = location.pathname === '/admin/ai-generator';
+  const isFullViewportPage = location.pathname === '/veda-admin-6721/ai-generator';
 
   return (
     <div className={`app-shell bg-slate-50 dark:bg-slate-950 flex flex-col ${isFullViewportPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
@@ -23,9 +23,9 @@ export default function Layout() {
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          <Link to="/admin" className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-tight text-slate-800 dark:text-white">
+          <Link to="/veda-admin-6721" className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-tight text-slate-800 dark:text-white">
             <ShieldAlert className="w-4 h-4 text-primary" />
-            <span>Sarkari Admin</span>
+            <span>ResultVeda Admin</span>
           </Link>
         </div>
         <ThemeToggle />

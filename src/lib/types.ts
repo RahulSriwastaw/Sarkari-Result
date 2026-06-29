@@ -162,6 +162,7 @@ export interface Profile {
   qualification: string | null;
   category: string | null;
   state: string | null;
+  role?: 'admin' | 'user';
   profile_completion_percentage: number;
   updated_at: string;
 }

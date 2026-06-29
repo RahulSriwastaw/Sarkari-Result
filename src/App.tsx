@@ -1,4 +1,5 @@
-import { Routes, Route, Outlet } from 'react-router-dom';
+import { Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import React from 'react';
 
 // Public Pages & Components
 import Header from './components/Header';
@@ -16,6 +17,8 @@ import TermsPage from './pages/public/TermsPage';
 import UserProfilePage from './pages/public/UserProfilePage';
 import ContactUsPage from './pages/public/ContactUsPage';
 import BackToTop from './components/BackToTop';
+import SEOPage from './pages/public/SEOPage';
+import SalaryCalculatorPage from './pages/public/SalaryCalculatorPage';
 
 // Admin Pages & Components
 import Login from './pages/admin/Login';
@@ -42,6 +45,15 @@ function PublicLayout() {
 }
 
 export default function App() {
+  const seoRoutes = [
+    '/latest-jobs', '/answer-key', '/syllabus',
+    '/admission', '/state-jobs', '/central-jobs', '/railway-jobs', '/ssc-jobs',
+    '/bank-jobs', '/teaching-jobs', '/defence-jobs', '/question-paper', 
+    '/mock-test', '/rank-predictor', '/current-affairs', '/government-schemes',
+    // Dynamic params
+    '/results/:exam', '/admit-card/:exam', '/answer-key/:exam', '/syllabus/:exam', '/jobs/:exam', '/rank-predictor/:exam'
+  ];
+
   return (
     <Routes>
       {/* Public Pages */}
@@ -59,14 +71,26 @@ export default function App() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/contact" element={<ContactUsPage />} />
         <Route path="/profile" element={<UserProfilePage />} />
+        <Route path="/expected-salary-calculator" element={<SalaryCalculatorPage />} />
+        
+        {/* Redirects for common admin paths */}
+        <Route path="/admin" element={<Navigate to="/veda-admin-6721" replace />} />
+        <Route path="/login" element={<Navigate to="/veda-admin-6721/login" replace />} />
+        
+        {/* Dynamic SEO Routes */}
+        {seoRoutes.map(path => (
+           <React.Fragment key={path}>
+             <Route path={path} element={<SEOPage />} />
+           </React.Fragment>
+        ))}
       </Route>
 
       {/* Admin Panel Authentication */}
-      <Route path="/admin/login" element={<Login />} />
+      <Route path="/veda-admin-6721/login" element={<Login />} />
 
       {/* Admin Panel Protected Workspace */}
       <Route
-        path="/admin"
+        path="/veda-admin-6721"
         element={
           <ProtectedRoute>
             <Layout />

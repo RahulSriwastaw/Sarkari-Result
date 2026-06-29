@@ -61,7 +61,7 @@ export default function AdmitCardPage() {
         <div className="text-center py-16 card bg-white dark:bg-slate-900 max-w-lg mx-auto">
           <p className="text-2xl mb-2">🎫</p>
           <h3 className="font-bold text-slate-700 dark:text-white">No active admit cards declared yet</h3>
-          <p className="text-xs text-slate-400 mt-1">Sarkari CMS will list call letters here the moment exams are officially announced.</p>
+          <p className="text-xs text-slate-400 mt-1">ResultVeda will list call letters here the moment exams are officially announced.</p>
           <Link to="/" className="btn btn-primary btn-sm mt-4">Browse Recruitment Jobs</Link>
         </div>
       ) : (

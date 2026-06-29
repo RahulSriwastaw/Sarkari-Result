@@ -3,11 +3,27 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { 
   getPostBySlug, createPost, updatePost, getCategories, getPosts 
 } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { Category, Post } from '../../lib/types';
 import { 
   ArrowLeft, Save, Eye, Clipboard, HelpCircle, RefreshCw, FileCode,
-  Sparkles, UploadCloud, Globe, FileText, CheckCircle, AlertCircle, ChevronDown, ChevronUp
+  Sparkles, UploadCloud, Globe, FileText, CheckCircle, AlertCircle, ChevronDown, ChevronUp,
+  Trash2, RotateCcw, CheckCircle2, ShieldAlert, AlertTriangle, Upload
 } from 'lucide-react';
+import BilingualHtmlBlock from '../../components/BilingualHtmlBlock';
+
+interface VerificationResult {
+  is_valid_recruitment: boolean;
+  confidence_score: number;
+  verified_fields: {
+    post_title: boolean;
+    vacancy_count: boolean;
+    eligibility_criteria: boolean;
+    important_dates: boolean;
+  };
+  verification_summary: string;
+  warning_message: string;
+}
 
 export default function PostForm() {
   const navigate = useNavigate();
@@ -30,6 +46,69 @@ export default function PostForm() {
   const [aiFile, setAiFile] = useState<File | null>(null);
   const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
   const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const pdfInputRef = React.useRef<HTMLInputElement>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
+
+  const handleGenerateSlug = () => {
+    if (!titleEn) return;
+    const formatted = titleEn
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+    setSlug(formatted);
+  };
+
+  const handleResetForm = () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 4000);
+      return;
+    }
+
+    // Reset all content states
+    setCategorySlug(categories.length > 0 ? categories[0].slug : '');
+    setSlug('');
+    setTitleEn('');
+    setTitleHi('');
+    setPostName('');
+    setDepartment('');
+    setAdvtNo('');
+    setVacancies(undefined);
+    setStartDate('');
+    setEndDate('');
+    setAdmitCardDate('');
+    setExamDate('');
+    setResultDate('');
+    setApplyLink('');
+    setNotificationLink('');
+    setAdmitCardLink('');
+    setResultLink('');
+    setOfficialWebsite('');
+    setOfficialLogoUrl('');
+    setShortInfoEn('');
+    setShortInfoHi('');
+    setBilingualHtml('');
+    setStatus('draft');
+
+    // Reset AI states
+    setWebsiteUrl('');
+    setAiInstructions('');
+    setAiExtractedText('');
+    setAiFile(null);
+    setVerificationResult(null);
+    setAiSuccessMessage('Form successfully cleared! You can now start writing a brand new post.');
+    setAiErrorMessage(null);
+    setAiStatusMessage('');
+    setConfirmReset(false);
+
+    // If in edit mode, navigate to the New Post route to write a fresh post
+    if (isEditMode) {
+      navigate('/veda-admin-6721/posts/new');
+    }
+  };
 
   const handleAiFileUpload = async (selectedFile: File) => {
     const lowerName = selectedFile.name.toLowerCase();
@@ -123,7 +202,8 @@ export default function PostForm() {
     setAiLoading(true);
     setAiErrorMessage(null);
     setAiSuccessMessage(null);
-    setAiStatusMessage('Stage 1/2: Scraping and crawling job portal website content...');
+    setVerificationResult(null);
+    setAiStatusMessage('Stage 1/3: Scraping and crawling job portal website content...');
 
     try {
       // Step 1: Scrape website
@@ -145,8 +225,23 @@ export default function PostForm() {
         throw new Error('No readable text content could be extracted from this job portal website.');
       }
 
-      // Step 2: Use AI agent to analyze crawled page and populate fields
-      setAiStatusMessage('Stage 2/2: AI Agent is analyzing crawled page content to extract title, vacancies, and eligibility criteria...');
+      // Step 2: Real-time AI Verification of Portal Content
+      setAiStatusMessage('Stage 2/3: AI is performing real-time verification on scraped portal data...');
+      
+      const verifyRes = await fetch('/api/verify-scraped-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentText: text, sourceUrl: websiteUrl })
+      });
+
+      if (verifyRes.ok) {
+        const verifyData = await verifyRes.json();
+        setVerificationResult(verifyData);
+        console.log('[Real-time Verification Report]:', verifyData);
+      }
+
+      // Step 3: Use AI agent to analyze crawled page and populate fields
+      setAiStatusMessage('Stage 3/3: AI Agent is writing the post and auto-filling form fields with verified portal data...');
 
       const genRes = await fetch('/api/generate-bulletin', {
         method: 'POST',
@@ -368,15 +463,29 @@ export default function PostForm() {
     initForm();
   }, [id, isEditMode]);
 
-  // Handle Slug generation from Title
-  const handleGenerateSlug = () => {
-    if (!titleEn) return;
-    const formatted = titleEn
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // remove special characters
-      .trim()
-      .replace(/\s+/g, '-'); // replace spaces with hyphens
-    setSlug(formatted);
+  const handleSupabasePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPdf(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .upload(`official-ads/${Date.now()}_${file.name}`, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(data.path);
+
+      setNotificationLink(publicUrl);
+      setAiSuccessMessage('PDF uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setAiErrorMessage('Failed to upload PDF.');
+    } finally {
+      setUploadingPdf(false);
+    }
   };
 
   // Pre-populate boilerplate HTML table
@@ -454,6 +563,7 @@ export default function PostForm() {
     setError(null);
 
     const postData = {
+      category_id: categories.find(c => c.slug === categorySlug)?.id,
       category_slug: categorySlug,
       slug: slug.trim(),
       title_en: titleEn.trim(),
@@ -485,7 +595,7 @@ export default function PostForm() {
       } else {
         await createPost(postData);
       }
-      navigate('/admin/posts');
+      navigate('/veda-admin-6721/posts');
     } catch (err: any) {
       console.error('Failed to save recruitment update:', err);
       setError(err?.message || 'Database transaction error occurred.');
@@ -507,9 +617,9 @@ export default function PostForm() {
     <div className="space-y-6 animate-fadeIn">
       
       {/* Header and Back Button */}
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 dark:border-slate-900 pb-4 gap-4">
         <div className="flex items-center gap-3">
-          <Link to="/admin/posts" className="p-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-500 border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
+          <Link to="/veda-admin-6721/posts" className="p-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-500 border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
@@ -518,6 +628,16 @@ export default function PostForm() {
             </h1>
             <p className="text-xs text-slate-400">Ensure the dates and application links match the official commissions pdf.</p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleResetForm}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-sm border ${confirmReset ? 'bg-rose-600 hover:bg-rose-750 text-white border-rose-600 animate-pulse' : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/40 border-rose-100 dark:border-rose-900/40'}`}
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>{confirmReset ? 'Click to Confirm Reset' : 'Reset / Write New Post'}</span>
+          </button>
         </div>
       </div>
 
@@ -550,23 +670,35 @@ export default function PostForm() {
         {aiPanelOpen && (
           <div className="border-t border-slate-100 dark:border-slate-850 pt-4 space-y-4">
             
-            {/* Source selector */}
-            <div className="flex gap-2 p-0.5 bg-slate-100 dark:bg-slate-950 rounded-lg w-max">
+            {/* Source selector & Reset Form Row */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex gap-2 p-0.5 bg-slate-100 dark:bg-slate-950 rounded-lg w-max">
+                <button
+                  type="button"
+                  onClick={() => setAiSourceType('pdf')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${aiSourceType === 'pdf' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Upload official notification PDF/Word</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiSourceType('url')}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${aiSourceType === 'url' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Scrape from URL (Job Portal)</span>
+                </button>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setAiSourceType('pdf')}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${aiSourceType === 'pdf' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={handleResetForm}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all ${confirmReset ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 animate-pulse' : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/40 border-rose-100 dark:border-rose-900/40'}`}
+                title="Clear all fields, summaries, links and uploaded documents to write a brand new post"
               >
-                <UploadCloud className="w-3.5 h-3.5" />
-                <span>Upload official notification PDF/Word</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiSourceType('url')}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${aiSourceType === 'url' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>Scrape from URL (Job Portal)</span>
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{confirmReset ? 'Confirm Reset?' : 'Reset Form'}</span>
               </button>
             </div>
 
@@ -664,6 +796,75 @@ export default function PostForm() {
                       <span>{aiExtractedText.length} characters of HTML content scraped and analyzed successfully!</span>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Real-time Verification Report Panel */}
+            {verificationResult && (
+              <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl space-y-3 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-150 dark:border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg text-indigo-500">
+                      <ShieldAlert className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Real-Time AI Verification Report</h4>
+                      <p className="text-[10px] text-slate-400">Authenticity analysis on scraped portal document text</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-slate-400">Confidence:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      verificationResult.confidence_score >= 75 ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400' :
+                      verificationResult.confidence_score >= 50 ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400' :
+                      'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {verificationResult.confidence_score}%
+                    </span>
+                    <span className={`badge ${
+                      verificationResult.is_valid_recruitment ? 'badge-success' : 'badge-error'
+                    }`}>
+                      {verificationResult.is_valid_recruitment ? '✓ Verified Recruitment' : '✗ Low Confidence Content'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Real-time Verified Parameters</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg">
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${verificationResult.verified_fields.post_title ? 'text-emerald-500' : 'text-slate-300'}`} />
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Post Title</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg">
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${verificationResult.verified_fields.vacancy_count ? 'text-emerald-500' : 'text-slate-300'}`} />
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Vacancy Count</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg">
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${verificationResult.verified_fields.eligibility_criteria ? 'text-emerald-500' : 'text-slate-300'}`} />
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Eligibility</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg">
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${verificationResult.verified_fields.important_dates ? 'text-emerald-500' : 'text-slate-300'}`} />
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Important Dates</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">AI Extraction Insight & Warnings</span>
+                    <div className="bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 p-2.5 rounded-lg h-[62px] overflow-y-auto leading-relaxed text-slate-600 dark:text-slate-400 text-[11px]">
+                      {verificationResult.verification_summary}
+                      {verificationResult.warning_message && (
+                        <p className="text-rose-500 dark:text-rose-400 font-semibold mt-1 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                          <span>{verificationResult.warning_message}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -950,12 +1151,10 @@ export default function PostForm() {
             </p>
 
             <div>
-              <textarea
+              <BilingualHtmlBlock
                 value={bilingualHtml}
-                onChange={(e) => setBilingualHtml(e.target.value)}
+                onChange={setBilingualHtml}
                 placeholder="Insert HTML table matrix, fee matrix, eligibility guidelines, age relaxation cards..."
-                rows={16}
-                className="textarea font-mono text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 focus:border-primary border border-slate-200 dark:border-slate-800"
               />
             </div>
           </div>
@@ -1071,13 +1270,30 @@ export default function PostForm() {
 
               <div>
                 <label className="label">Official Advertisement PDF</label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={notificationLink}
-                  onChange={(e) => setNotificationLink(e.target.value)}
-                  className="input focus:border-primary text-xs"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={notificationLink}
+                    onChange={(e) => setNotificationLink(e.target.value)}
+                    className="input focus:border-primary text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => pdfInputRef.current?.click()}
+                    className="btn btn-secondary btn-icon"
+                    title="Upload PDF directly"
+                  >
+                    {uploadingPdf ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  </button>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    ref={pdfInputRef}
+                    onChange={handleSupabasePdfUpload}
+                  />
+                </div>
               </div>
 
               <div>

@@ -85,7 +85,7 @@ export default function Posts() {
           </h1>
           <p className="text-xs text-slate-400">Add, edit, structure, and publish announcements instantly.</p>
         </div>
-        <Link to="/admin/posts/new" className="btn btn-primary btn-sm self-start sm:self-auto">
+        <Link to="/veda-admin-6721/posts/new" className="btn btn-primary btn-sm self-start sm:self-auto">
           <PlusCircle className="w-4 h-4" />
           <span>Create New Post</span>
         </Link>
@@ -248,7 +248,7 @@ export default function Posts() {
                     <td className="p-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
-                          to={`/admin/posts/edit/${post.id}`}
+                          to={`/veda-admin-6721/posts/edit/${post.id}`}
                           className="btn btn-secondary btn-icon p-1.5"
                           title="Edit Recruitment Details"
                         >

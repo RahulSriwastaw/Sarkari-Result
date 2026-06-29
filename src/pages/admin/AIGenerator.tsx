@@ -8,6 +8,8 @@ import {
   AlignLeft, ChevronLeft, ChevronRight, Copy, ExternalLink,
   Link, Play, Pause, XCircle, Clock, CheckSquare, ListPlus
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import BilingualHtmlBlock from '../../components/BilingualHtmlBlock';
 
 interface BulkUrlTask {
   id: string;
@@ -52,7 +54,9 @@ export default function AIGenerator() {
   const [fileBase64, setFileBase64] = useState<string | null>(null);
   const [parsedText, setParsedText] = useState<string>('');
   const [userInstructions, setUserInstructions] = useState<string>('');
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // Generated Fields State
   const [titleEn, setTitleEn] = useState('');
@@ -82,6 +86,48 @@ export default function AIGenerator() {
   const [shortInfoHi, setShortInfoHi] = useState('');
   const [bilingualHtml, setBilingualHtml] = useState('');
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const handleResetForm = () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 4000);
+      return;
+    }
+
+    // Reset all generated fields
+    setTitleEn('');
+    setTitleHi('');
+    setSlug('');
+    setPostName('');
+    setDepartment('');
+    setAdvtNo('');
+    setVacancies(undefined);
+    setStartDate('');
+    setEndDate('');
+    setAdmitCardDate('');
+    setExamDate('');
+    setResultDate('');
+    setApplyLink('');
+    setNotificationLink('');
+    setAdmitCardLink('');
+    setResultLink('');
+    setOfficialWebsite('');
+    setShortInfoEn('');
+    setShortInfoHi('');
+    setBilingualHtml('');
+    setStatus('draft');
+
+    // Reset files/instructions/raw content
+    setFile(null);
+    setFileBase64(null);
+    setParsedText('');
+    setUserInstructions('');
+    
+    setConfirmReset(false);
+    setSuccess('AI Content Desk successfully reset! Ready to parse and generate a new post.');
+    setError(null);
+  };
 
   // Load category list on mount
   useEffect(() => {
@@ -215,6 +261,31 @@ export default function AIGenerator() {
     setSuccess(null);
   };
 
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPdf(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .upload(`official-ads/${Date.now()}_${file.name}`, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(data.path);
+
+      setNotificationLink(publicUrl);
+      setSuccess('PDF uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to upload PDF.');
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
   // Auto Generate Slug
   const handleGenerateSlug = () => {
     if (!titleEn) return;
@@ -306,6 +377,7 @@ export default function AIGenerator() {
     setSuccess(null);
 
     const postData = {
+      category_id: categories.find(c => c.slug === selectedCategory)?.id,
       category_slug: selectedCategory,
       slug: slug.trim(),
       title_en: titleEn.trim(),
@@ -332,9 +404,9 @@ export default function AIGenerator() {
 
     try {
       await createPost(postData);
-      setSuccess('Sarkari Vacancy Bulletin saved and registered successfully!');
+      setSuccess('ResultVeda Vacancy Bulletin saved and registered successfully!');
       setTimeout(() => {
-        navigate('/admin/posts');
+        navigate('/veda-admin-6721/posts');
       }, 1500);
     } catch (err: any) {
       console.error('Failed to create post:', err);
@@ -430,9 +502,28 @@ export default function AIGenerator() {
           body: JSON.stringify({ url: task.url })
         });
 
+        const scrapeContentType = scrapeRes.headers.get('content-type') || '';
         if (!scrapeRes.ok) {
-          const errorData = await scrapeRes.json().catch(() => ({}));
-          throw new Error(errorData.error || `Scraping endpoint failed with status ${scrapeRes.status}`);
+          let errorMessage = `Scraping endpoint failed with status ${scrapeRes.status}`;
+          
+          if (scrapeContentType.includes('application/json')) {
+            const errorData = await scrapeRes.json().catch(() => ({}));
+            errorMessage = errorData.error || errorMessage;
+          } else {
+            const text = await scrapeRes.text().catch(() => '');
+            if (text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
+              errorMessage = `Scraping server error (returned HTML instead of JSON). Status: ${scrapeRes.status}`;
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (!scrapeContentType.includes('application/json')) {
+          const text = await scrapeRes.text().catch(() => '');
+          if (text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
+            throw new Error(`Scraping server returned HTML instead of JSON. Check if the server is running correctly.`);
+          }
+          throw new Error(`Scraping server returned non-JSON response: ${text.slice(0, 100)}`);
         }
 
         const scrapeData = await scrapeRes.json();
@@ -450,7 +541,7 @@ export default function AIGenerator() {
         // 2. AI Generation Phase
         task.status = 'generating';
         setBulkTasks([...updatedTasks]);
-        setBulkLogs(prev => [...prev, `   ↳ [Step 2] Sending crawled text to Gemini 3.5 Flash for structuring...`]);
+        setBulkLogs(prev => [...prev, `   ↳ [Step 2] Sending crawled text to Gemini Flash for structuring...`]);
 
         const genRes = await fetch('/api/generate-bulletin', {
           method: 'POST',
@@ -462,8 +553,25 @@ export default function AIGenerator() {
           })
         });
 
+        const genContentType = genRes.headers.get('content-type') || '';
         if (!genRes.ok) {
-          throw new Error(`AI generation endpoint failed with status ${genRes.status}`);
+          let errorMessage = `AI generation endpoint failed with status ${genRes.status}`;
+          
+          if (genContentType.includes('application/json')) {
+            const errorData = await genRes.json().catch(() => ({}));
+            errorMessage = errorData.error || errorMessage;
+          } else {
+            const text = await genRes.text().catch(() => '');
+            if (text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
+              errorMessage = `AI generation server error (HTML returned). Status: ${genRes.status}`;
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (!genContentType.includes('application/json')) {
+          const text = await genRes.text().catch(() => '');
+          throw new Error(`AI generation server returned non-JSON response (possibly HTML).`);
         }
 
         const genData = await genRes.json();
@@ -486,6 +594,7 @@ export default function AIGenerator() {
           .replace(/\s+/g, '-');
 
         const postData = {
+          category_id: categories.find(c => c.slug === selectedCategory)?.id,
           category_slug: selectedCategory,
           slug: taskSlug,
           title_en: genData.title_en || `Draft Bulletin from URL`,
@@ -568,7 +677,7 @@ export default function AIGenerator() {
           </span>
           <span className="workspace-id">v3.0</span>
           <h1 className="workspace-name text-slate-800 dark:text-white font-bold text-sm">
-            AI-Driven Sarkari Notification Digitizer
+            AI-Driven ResultVeda Notification Digitizer
           </h1>
         </div>
 
@@ -770,7 +879,6 @@ export default function AIGenerator() {
                           Select Target Category
                         </label>
                         <select
-                          value={selectedCategory}
                           onChange={(e) => setSelectedCategory(e.target.value)}
                           className="select border-slate-200 dark:border-slate-800 text-xs py-1.5 h-auto"
                         >
@@ -922,7 +1030,7 @@ export default function AIGenerator() {
                                 {task.status}
                               </span>
                               {task.createdPostId && (
-                                <span className="text-indigo-500 hover:underline cursor-pointer flex items-center gap-0.5 font-bold" onClick={() => navigate('/admin/posts')}>
+                                <span className="text-indigo-500 hover:underline cursor-pointer flex items-center gap-0.5 font-bold" onClick={() => navigate('/veda-admin-6721/posts')}>
                                   Created Draft <ExternalLink className="w-2.5 h-2.5" />
                                 </span>
                               )}
@@ -957,17 +1065,27 @@ export default function AIGenerator() {
           )}
         </aside>
 
-        {/* ================= CENTER PANEL: BILINGUAL SCHEMAS EDITOR ================= */}
+         {/* ================= CENTER PANEL: BILINGUAL SCHEMAS EDITOR ================= */}
         <section className="panel-center flex flex-col flex-1 overflow-hidden">
-          <div className="panel-center-header">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              CMS Interactive Form Workdesk
-            </span>
+          <div className="panel-center-header flex items-center justify-between px-4 h-[44px] bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-mono">
-                {titleEn ? 'Form Populated' : 'Awaiting Notification Digitization'}
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                CMS Interactive Form Workdesk
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                ({titleEn ? 'Form Populated' : 'Awaiting Notification Digitization'})
               </span>
             </div>
+            
+            <button
+              type="button"
+              onClick={handleResetForm}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${confirmReset ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 animate-pulse' : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/40 border-rose-100 dark:border-rose-900/40'}`}
+              title="Clear all fields and generated details to start fresh"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{confirmReset ? 'Confirm Reset?' : 'Reset Form'}</span>
+            </button>
           </div>
 
           <div className="panel-center-body flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50 dark:bg-slate-950">
@@ -1229,13 +1347,30 @@ export default function AIGenerator() {
 
                     <div>
                       <label className="label">Official Advertisement PDF</label>
-                      <input
-                        type="url"
-                        value={notificationLink}
-                        onChange={(e) => setNotificationLink(e.target.value)}
-                        className="input text-xs border-slate-200 dark:border-slate-800"
-                        placeholder="https://..."
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={notificationLink}
+                          onChange={(e) => setNotificationLink(e.target.value)}
+                          className="input text-xs border-slate-200 dark:border-slate-800"
+                          placeholder="https://..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => pdfInputRef.current?.click()}
+                          className="btn btn-secondary btn-icon"
+                          title="Upload PDF directly"
+                        >
+                          {uploadingPdf ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        </button>
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          className="hidden"
+                          ref={pdfInputRef}
+                          onChange={handlePdfUpload}
+                        />
+                      </div>
                     </div>
 
                     <div>
@@ -1281,28 +1416,16 @@ export default function AIGenerator() {
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       5. Tabbed Bilingual HTML Block
                     </h4>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(bilingualHtml)}
-                        className="btn btn-secondary btn-sm flex items-center gap-1"
-                        title="Copy HTML to Clipboard"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">Copy HTML</span>
-                      </button>
-                    </div>
                   </div>
 
                   <p className="text-[10px] text-slate-400 leading-normal">
                     This block will render inside the job card on the live public portal. You can manually tweak the qualifications, fees, or table column details below.
                   </p>
 
-                  <textarea
+                  <BilingualHtmlBlock
                     value={bilingualHtml}
-                    onChange={(e) => setBilingualHtml(e.target.value)}
-                    rows={12}
-                    className="textarea font-mono text-[11px] leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850"
+                    onChange={setBilingualHtml}
+                    placeholder="Insert HTML table matrix, fee matrix, eligibility guidelines, age relaxation cards..."
                   />
                 </div>
 

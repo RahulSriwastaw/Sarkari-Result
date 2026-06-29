@@ -1,7 +1,10 @@
 -- ==========================================
--- SARKARI RESULT / CMS - SUPABASE SCHEMA SETUP
+-- RESULTVEDA / CMS - SUPABASE SCHEMA SETUP
 -- Paste this script into your Supabase SQL Editor (https://supabase.com/dashboard/project/kvyeumipuyooaprxlsah/sql/new)
 -- ==========================================
+
+-- 0. Enable Extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. Create Categories Table
 CREATE TABLE IF NOT EXISTS public.categories (
@@ -18,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
 
 -- 2. Create Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
     slug TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     title_hindi TEXT,
@@ -26,13 +29,29 @@ CREATE TABLE IF NOT EXISTS public.posts (
     content_english TEXT,
     excerpt TEXT,
     post_name TEXT,
+    department TEXT,
+    advt_no TEXT,
     total_vacancies INTEGER,
+    vacancies INTEGER, -- Alias for total_vacancies
     vacancy_details JSONB DEFAULT '[]'::jsonb,
     eligibility JSONB DEFAULT '{}'::jsonb,
     important_dates JSONB DEFAULT '[]'::jsonb,
+    start_date DATE,
+    end_date DATE,
+    admit_card_date DATE,
+    exam_date DATE,
+    result_date DATE,
     salary_range TEXT,
     apply_link TEXT,
+    notification_link TEXT,
+    admit_card_link TEXT,
+    result_link TEXT,
     official_site TEXT,
+    official_website TEXT, -- Alias for official_site
+    official_logo_url TEXT,
+    bilingual_html TEXT,
+    short_info_en TEXT,
+    short_info_hi TEXT,
     category_id TEXT REFERENCES public.categories(id) ON DELETE SET NULL,
     tags TEXT[] DEFAULT '{}'::text[],
     state TEXT[] DEFAULT '{}'::text[],
@@ -148,8 +167,8 @@ ON CONFLICT (id) DO UPDATE SET
 -- 7. Insert Initial Default Settings
 INSERT INTO public.settings (key, value)
 VALUES 
-  ('site_name', 'SarkariCMS'),
-  ('site_tagline', 'Sarkari Naukri, Sabse Pehle'),
+  ('site_name', 'ResultVeda'),
+  ('site_tagline', 'Sarkari Result, Latest Jobs & Government Exam Updates'),
   ('telegram_channel', 'sarkariprep_telegram'),
   ('auto_share_telegram', 'false'),
   ('posts_per_page', '20')

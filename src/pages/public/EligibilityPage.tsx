@@ -202,7 +202,7 @@ export default function EligibilityPage() {
           <span>AI eligibility Checker & Matchmaker</span>
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
-          Unsure if you qualify for a government job advertisement? Fill in your profile details below, and our Gemini AI-powered matcher will evaluate active Sarkari vacancies to find matches for you.
+          Unsure if you qualify for a government job advertisement? Fill in your profile details below, and our Gemini AI-powered matcher will evaluate active ResultVeda vacancies to find matches for you.
         </p>
       </div>
 
@@ -351,7 +351,7 @@ export default function EligibilityPage() {
                   <span className="bg-primary/10 text-primary p-1 rounded">
                     💡
                   </span>
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-primary">Sarkari AI Evaluator Summary</h3>
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-primary">ResultVeda AI Evaluator Summary</h3>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-hindi leading-relaxed">
                   {result.summary}

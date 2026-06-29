@@ -77,12 +77,12 @@ export default function Header() {
           <div className="flex items-center gap-2">
             <Link to="/" className="flex items-center gap-1.5 group">
               <span className="w-8 h-8 flex items-center justify-center bg-primary rounded-lg text-white font-bold text-lg shadow-md shadow-primary/20 group-hover:bg-primary-hover transition-colors">
-                S
+                R
               </span>
               <div className="leading-tight">
-                <span className="font-bold text-lg text-slate-800 dark:text-white group-hover:text-primary transition-colors">Sarkari</span>
-                <span className="font-bold text-lg text-primary">CMS</span>
-                <span className="hidden sm:block text-[10px] text-gray-400 dark:text-slate-500 font-medium tracking-wider uppercase">Sabse Pehle</span>
+                <span className="font-bold text-lg text-slate-800 dark:text-white group-hover:text-primary transition-colors">Result</span>
+                <span className="font-bold text-lg text-primary">Veda</span>
+                <span className="hidden sm:block text-[10px] text-gray-400 dark:text-slate-500 font-medium tracking-wider uppercase">Sarkari Result, Latest Jobs & Government Exam Updates</span>
               </div>
             </Link>
           </div>
@@ -103,6 +103,13 @@ export default function Header() {
             </Link>
             <Link to="/eligibility" className={`px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors ${location.pathname === '/eligibility' ? 'text-primary bg-primary/10' : 'text-slate-600 dark:text-slate-300 hover:text-primary'}`}>
               AI Eligibility
+            </Link>
+            <Link to="/expected-salary-calculator" className={`px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors ${location.pathname === '/expected-salary-calculator' ? 'text-primary bg-primary/10' : 'text-slate-600 dark:text-slate-300 hover:text-primary'}`}>
+              Salary Calc
+            </Link>
+            <Link to="/veda-admin-6721" className="px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-primary transition-colors flex items-center gap-1">
+              <ShieldAlert className="w-3 h-3" />
+              <span>Admin</span>
             </Link>
           </nav>
 
@@ -130,14 +137,6 @@ export default function Header() {
               <div id="google_translate_element"></div>
             </div>
             
-            <Link 
-              to="/admin" 
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-semibold text-xs transition-all border border-slate-200 dark:border-slate-700"
-            >
-              <ShieldAlert className="w-3.5 h-3.5 text-primary animate-pulse" />
-              <span>Admin Panel</span>
-            </Link>
-
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 lg:hidden rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -154,7 +153,7 @@ export default function Header() {
         <div className="border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-inner">
           <form onSubmit={handleSearchSubmit} className="max-w-3xl mx-auto flex gap-2">
             <select 
-                value={selectedCategory}
+                value={selectedCategory || ""}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-primary text-slate-800 dark:text-white"
             >
@@ -163,7 +162,7 @@ export default function Header() {
             </select>
             <input 
               type="text" 
-              placeholder="Search Sarkari Jobs (e.g. SSC, RPF, Bank, etc.)..."
+              placeholder="Search ResultVeda (e.g. SSC, RPF, Bank, etc.)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-4 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-primary dark:focus:border-primary text-slate-800 dark:text-white"
@@ -201,6 +200,13 @@ export default function Header() {
               <Link to="/eligibility" className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg">
                 AI Eligibility
               </Link>
+              <Link to="/expected-salary-calculator" className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg">
+                Salary Calculator
+              </Link>
+              <Link to="/veda-admin-6721" className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg">
+                <ShieldAlert className="w-4 h-4" />
+                <span>Admin Panel</span>
+              </Link>
             </div>
             
             <div className="flex flex-col gap-1.5">
@@ -215,16 +221,6 @@ export default function Header() {
                   <span>{cat.name}</span>
                 </Link>
               ))}
-            </div>
-
-            <div className="mt-auto border-t border-slate-100 dark:border-slate-800 pt-4">
-              <Link 
-                to="/admin" 
-                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-primary text-white hover:bg-primary-hover rounded-lg font-semibold text-sm transition-all"
-              >
-                <ShieldAlert className="w-4 h-4" />
-                <span>Admin Portal Login</span>
-              </Link>
             </div>
           </div>
         </div>

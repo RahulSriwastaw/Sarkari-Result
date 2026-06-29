@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://resultveda.com/sitemap.xml
+Sitemap: https://resultveda.com/sitemap-news.xml

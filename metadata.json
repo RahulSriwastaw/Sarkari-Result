@@ -1,6 +1,6 @@
 {
-  "name": "Sarkari Job Update CMS",
-  "description": "Sarkari Job Update CMS & Student Portal. Features direct manual posting, live alerts for latest exams, results, and syllabus, and robust job listing administration.",
+  "name": "ResultVeda",
+  "description": "ResultVeda: Get the latest Sarkari Result, Government Jobs, Admit Card, Answer Key, Syllabus and Exam Updates.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

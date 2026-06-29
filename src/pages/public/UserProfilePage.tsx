@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPosts, getCurrentUser, getProfile } from '../../lib/supabase';
+import { getPosts, getCurrentUser, getProfile, candidateLogin, registerUser, adminLogout, getSavedJobs } from '../../lib/supabase';
 import { Post, Profile } from '../../lib/types';
 import PostCard from '../../components/PostCard';
 import ProfileForm from '../../components/ProfileForm';
@@ -14,25 +14,101 @@ export default function UserProfilePage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Auth state for standard candidates
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+
+    if (!email || !password) {
+      setAuthError('Please fill in all fields.');
+      return;
+    }
+
+    if (authTab === 'register' && password !== confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      if (authTab === 'login') {
+        const res = await candidateLogin(email, password);
+        if (res.success) {
+          await loadData();
+          setEmail('');
+          setPassword('');
+        } else {
+          setAuthError(res.error || 'Incorrect login credentials.');
+        }
+      } else {
+        const res = await registerUser(email, password);
+        if (res.success) {
+          await loadData();
+          setEmail('');
+          setPassword('');
+          setConfirmPassword('');
+        } else {
+          setAuthError(res.error || 'Registration failed.');
+        }
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Authentication error occurred.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await adminLogout();
+      setUser(null);
+      setProfile(null);
+      await loadData();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
       
-      if (currentUser && currentUser.email) {
-        const profileData = await getProfile(currentUser.email);
-        setProfile(profileData);
+      if (currentUser) {
+        const profileId = currentUser.uid || currentUser.email;
+        if (profileId) {
+          const profileData = await getProfile(profileId);
+          setProfile(profileData);
+        }
       }
 
-      const savedIds = JSON.parse(localStorage.getItem('savedJobs') || '[]');
       const trackedApps = JSON.parse(localStorage.getItem('my_applications') || '{}');
       const trackedIds = Object.keys(trackedApps);
       
-      const allPosts = await getPosts();
+      const allPosts = await getPosts({});
       
-      const filteredPosts = allPosts.filter(p => savedIds.includes(p.id));
-      setSavedPosts(filteredPosts);
+      let savedPostsData: Post[] = [];
+      if (currentUser) {
+        const profileId = currentUser.uid || currentUser.email;
+        if (profileId) {
+          const { data } = await getSavedJobs(profileId);
+          if (data) {
+            savedPostsData = data.map(item => item.posts as unknown as Post);
+          }
+        }
+      } else {
+        const savedIds = JSON.parse(localStorage.getItem('savedJobs') || '[]');
+        savedPostsData = allPosts.filter(p => savedIds.includes(p.id));
+      }
+      setSavedPosts(savedPostsData);
 
       const filteredTrackedPosts = allPosts
         .filter(p => trackedIds.includes(p.id))
@@ -82,17 +158,111 @@ export default function UserProfilePage() {
             </h2>
             
             {!user ? (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  Log in to create your persistent eligibility profile and let AI find jobs for you.
+              <div className="space-y-4">
+                <div className="flex border-b border-slate-150 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthTab('login'); setAuthError(null); }}
+                    className={`flex-1 pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${authTab === 'login' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}
+                  >
+                    Candidate Login
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthTab('register'); setAuthError(null); }}
+                    className={`flex-1 pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${authTab === 'register' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}
+                  >
+                    New Registration
+                  </button>
+                </div>
+
+                {authError && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg text-xs leading-normal">
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleAuthSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      className="input focus:border-primary"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="input focus:border-primary"
+                      required
+                    />
+                  </div>
+
+                  {authTab === 'register' && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="input focus:border-primary"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="btn btn-primary w-full justify-center h-9 font-semibold text-xs uppercase tracking-wider mt-2"
+                  >
+                    {authLoading ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Authenticating...
+                      </span>
+                    ) : (
+                      authTab === 'login' ? 'Log In' : 'Create Account'
+                    )}
+                  </button>
+                </form>
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-normal">
+                  {authTab === 'login' 
+                    ? "Candidates can log in to persistently sync their qualifications profile with ourGovernment Exam Eligibility Engine."
+                    : "Create a free profile to persistently save your criteria & automatically match with government job posts."
+                  }
                 </p>
-                <Link to="/admin/login" className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg font-semibold text-sm transition-colors">
-                  <LogIn className="w-4 h-4" />
-                  Log In
-                </Link>
               </div>
             ) : (
-              <ProfileForm profile={profile} onUpdate={loadData} />
+              <div className="space-y-4">
+                <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/50 mb-4">
+                  <div className="truncate pr-2">
+                    <p className="text-[10px] uppercase font-bold text-slate-400">Signed In As</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{user.email}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30 rounded-md transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
+                <ProfileForm profile={profile} onUpdate={loadData} />
+              </div>
             )}
           </div>
         </div>

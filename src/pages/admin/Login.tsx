@@ -11,7 +11,7 @@ export default function Login() {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || '/admin';
+  const from = location.state?.from?.pathname || '/veda-admin-6721';
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,8 +25,10 @@ export default function Login() {
 
     try {
       const response = await adminLogin(email, password);
-      if (response.success) {
+      if (response.success && response.role === 'admin') {
         navigate(from, { replace: true });
+      } else if (response.success) {
+        setError('This portal is restricted to administrators. Standard users must login via the Profile page.');
       } else {
         setError(response.error || 'Incorrect administrator credentials.');
       }
@@ -59,7 +61,7 @@ export default function Login() {
               <ShieldAlert className="w-8 h-8" />
             </div>
             <h1 className="text-xl font-extrabold tracking-tight text-slate-800 dark:text-white">
-              Sarkari CMS Panel
+              ResultVeda CMS Panel
             </h1>
             <p className="text-xs text-slate-400 max-w-xs mx-auto">
               Protected authentication gateway. Unauthorized logins are monitored.
@@ -78,7 +80,7 @@ export default function Login() {
               <label className="label">Admin Email Account</label>
               <input
                 type="email"
-                placeholder="admin@sarkariprep.in"
+                placeholder="admin@resultveda.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input focus:border-primary"
@@ -120,11 +122,11 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Seed accounts notice / disclaimer */}
+          {/* Credentials notice */}
           <div className="mt-8 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-[10px] text-slate-400 leading-normal">
-            <p>Demo Admin Credentials:</p>
-            <p className="font-mono mt-0.5 text-slate-500 dark:text-slate-400 font-semibold selection:bg-primary/20">
-              admin@sarkariprep.in / admin123
+            <p>Administrative access is restricted.</p>
+            <p className="mt-0.5 text-slate-500 dark:text-slate-400 font-medium italic">
+              Credentials managed via system environment variables.
             </p>
           </div>
         </div>

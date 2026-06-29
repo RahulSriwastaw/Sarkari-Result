@@ -204,7 +204,7 @@ export default function CalendarPage() {
       <div className="card p-6 bg-white dark:bg-slate-900 shadow-sm rounded-xl space-y-2">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
           <Calendar className="w-6 h-6 text-primary" />
-          <span>Sarkari Exams & Applications Calendar 2026</span>
+          <span>ResultVeda Exams & Applications Calendar 2026</span>
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
           Stay ahead of key deadlines! Track direct apply last dates, admit card downloads, answer keys, and computer-based test (CBT) schedules across all verified recruitments.
@@ -416,7 +416,7 @@ export default function CalendarPage() {
                 <span>Weekly Update Cycle</span>
               </h4>
               <p className="text-[10px] text-slate-400 leading-relaxed">
-                Dates are parsed from the official gazettes automatically. In case of updates, exam boards might extend deadlines which are updated inside SarkariCMS within 12 hours.
+                Dates are parsed from the official gazettes automatically. In case of updates, exam boards might extend deadlines which are updated inside ResultVeda within 12 hours.
               </p>
             </div>
 

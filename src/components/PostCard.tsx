@@ -4,6 +4,7 @@ import { Calendar, Briefcase, GraduationCap, ChevronRight, Share2, Bookmark, Loa
 import { Post, Profile, isNewPost, isClosingSoonPost, isHighSalaryPost } from '../lib/types';
 import { checkEligibility } from '../lib/eligibility';
 import { toBlob } from 'html-to-image';
+import { saveJob, unsaveJob, isJobSaved } from '../lib/supabase';
 
 interface PostCardProps {
   key?: any;
@@ -23,22 +24,39 @@ export default function PostCard({ post, profile }: PostCardProps) {
 
   useEffect(() => {
     setLogoSrc(post.official_logo_url || '');
-    const savedJobs = JSON.parse(localStorage.getItem('savedJobs') || '[]');
-    setIsSaved(savedJobs.includes(post.id));
-  }, [post.official_logo_url, post.id]);
+    if (profile) {
+      isJobSaved(profile.id, post.id).then(res => {
+        if (res.isSaved) setIsSaved(true);
+      });
+    } else {
+      const savedJobs = JSON.parse(localStorage.getItem('savedJobs') || '[]');
+      setIsSaved(savedJobs.includes(post.id));
+    }
+  }, [post.official_logo_url, post.id, profile]);
 
-  const toggleSave = (e: React.MouseEvent) => {
+  const toggleSave = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const savedJobs = JSON.parse(localStorage.getItem('savedJobs') || '[]');
-    if (isSaved) {
-      const newSaved = savedJobs.filter((id: string) => id !== post.id);
-      localStorage.setItem('savedJobs', JSON.stringify(newSaved));
-      setIsSaved(false);
+
+    if (profile) {
+        if (isSaved) {
+            await unsaveJob(profile.id, post.id);
+            setIsSaved(false);
+        } else {
+            await saveJob(profile.id, post.id);
+            setIsSaved(true);
+        }
     } else {
-      savedJobs.push(post.id);
-      localStorage.setItem('savedJobs', JSON.stringify(savedJobs));
-      setIsSaved(true);
+        const savedJobs = JSON.parse(localStorage.getItem('savedJobs') || '[]');
+        if (isSaved) {
+        const newSaved = savedJobs.filter((id: string) => id !== post.id);
+        localStorage.setItem('savedJobs', JSON.stringify(newSaved));
+        setIsSaved(false);
+        } else {
+        savedJobs.push(post.id);
+        localStorage.setItem('savedJobs', JSON.stringify(savedJobs));
+        setIsSaved(true);
+        }
     }
   };
 
@@ -177,8 +195,8 @@ export default function PostCard({ post, profile }: PostCardProps) {
 
       if (!blob) throw new Error('Failed to create image blob');
 
-      const file = new File([blob], `SarkariCMS-${post.slug}.png`, { type: 'image/png' });
-      const textMessage = `🚀 ${post.title_hindi || post.title}\n💼 Vacancies: ${post.total_vacancies || 'Check Notification'}\n📅 Last Date: ${lastDate}\n🎓 Eligibility: ${education}\n\nApply now at SarkariCMS 👇\n`;
+      const file = new File([blob], `ResultVeda-${post.slug}.png`, { type: 'image/png' });
+      const textMessage = `🚀 ${post.title_hindi || post.title}\n💼 Vacancies: ${post.total_vacancies || 'Check Notification'}\n📅 Last Date: ${lastDate}\n🎓 Eligibility: ${education}\n\nApply now at ResultVeda 👇\n`;
       const postUrl = `${window.location.origin}/job/${post.slug}`;
 
       const shareData = {
@@ -219,7 +237,7 @@ export default function PostCard({ post, profile }: PostCardProps) {
   };
 
   return (
-      <article className="card p-3 relative overflow-hidden flex flex-col justify-between hover:-translate-y-0.5 duration-200 dark:bg-[#111528] dark:border-[#1C2140]">
+      <article className="card p-3 relative overflow-hidden flex flex-col justify-between hover:-translate-y-0.5 hover:scale-[1.02] duration-200 dark:bg-[#111528] dark:border-[#1C2140]">
       <div>
         {/* Top Badges Row */}
         <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
@@ -344,10 +362,10 @@ export default function PostCard({ post, profile }: PostCardProps) {
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-5">
                 <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center text-4xl font-bold text-white shadow-xl shadow-primary/30">
-                  S
+                  R
                 </div>
                 <div>
-                  <h1 className="text-5xl font-extrabold text-white tracking-tight leading-none mb-1">Sarkari<span className="text-primary">CMS</span></h1>
+                  <h1 className="text-5xl font-extrabold text-white tracking-tight leading-none mb-1">Result<span className="text-primary">Veda</span></h1>
                   <p className="text-lg text-primary-300 font-semibold tracking-[0.2em] uppercase">Sabse Pehle</p>
                 </div>
               </div>
@@ -459,7 +477,7 @@ export default function PostCard({ post, profile }: PostCardProps) {
                 <div>
                   <p className="text-2xl text-slate-400 font-medium mb-1">Apply Online & Get Updates at</p>
                   <p className="text-4xl font-extrabold text-white tracking-wide">
-                    sarkaricms.com/job/<span className="text-primary">{post.slug}</span>
+                    resultveda.com/job/<span className="text-primary">{post.slug}</span>
                   </p>
                 </div>
               </div>

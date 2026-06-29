@@ -1,0 +1,80 @@
+{
+  "collections": {
+    "profiles": {
+      "schema": {
+        "id": "string",
+        "email": "string",
+        "full_name": "string?",
+        "avatar_url": "string?",
+        "preferences": "map?",
+        "role": "string",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null && request.auth.uid == resource.id"
+      }
+    },
+    "categories": {
+      "schema": {
+        "name": "string",
+        "name_hindi": "string?",
+        "slug": "string",
+        "description": "string?",
+        "icon": "string?",
+        "color": "string?",
+        "order_index": "number",
+        "post_count": "number",
+        "created_at": "timestamp"
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'"
+      }
+    },
+    "posts": {
+      "schema": {
+        "title": "string",
+        "title_hindi": "string?",
+        "slug": "string",
+        "content_hindi": "string?",
+        "content_english": "string?",
+        "excerpt": "string?",
+        "post_name": "string?",
+        "total_vacancies": "number?",
+        "vacancy_details": "list?",
+        "eligibility": "map?",
+        "important_dates": "list?",
+        "salary_range": "string?",
+        "apply_link": "string?",
+        "official_site": "string?",
+        "category_id": "string",
+        "tags": "list?",
+        "state": "list?",
+        "exam_type": "string",
+        "status": "string",
+        "published_at": "timestamp?",
+        "created_at": "timestamp",
+        "updated_at": "timestamp",
+        "view_count": "number",
+        "click_apply": "number"
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'"
+      }
+    },
+    "settings": {
+      "schema": {
+        "key": "string",
+        "value": "string",
+        "updated_at": "timestamp"
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'"
+      }
+    }
+  }
+}

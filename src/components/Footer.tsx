@@ -1,31 +1,44 @@
 import { Link } from 'react-router-dom';
 import { Award, Briefcase, ExternalLink, ShieldCheck, Mail, Radio } from 'lucide-react';
+import NewsletterSubscription from './NewsletterSubscription';
+import FAQ from './FAQ';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
     <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 transition-colors duration-200 mt-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
+        
+        {/* Added FAQ and Newsletter to Footer */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 border-b border-slate-800 pb-12">
+          <div className="bg-slate-800/30 rounded-xl p-1">
+             <FAQ />
+          </div>
+          <div className="bg-slate-800/30 rounded-xl p-1">
+             <NewsletterSubscription />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           
           {/* Brand Column */}
           <div className="md:col-span-1 space-y-4">
             <Link to="/" className="flex items-center gap-2 group">
               <span className="w-8 h-8 flex items-center justify-center bg-primary rounded-lg text-white font-bold text-lg shadow-md shadow-primary/20">
-                S
+                R
               </span>
               <div>
-                <span className="font-bold text-lg text-white">Sarkari</span>
-                <span className="font-bold text-lg text-primary">CMS</span>
+                <span className="font-bold text-lg text-white">Result</span>
+                <span className="font-bold text-lg text-primary">Veda</span>
               </div>
             </Link>
             <p className="text-xs text-slate-400 leading-relaxed">
-              India's premier portal for instant government job notification alerts. Providing comprehensive info on exam dates, admit cards, exam results, syllabi, and official keys, sabse pehle.
+              ResultVeda is India's premier portal for instant government job notification alerts. Providing comprehensive info on exam dates, admit cards, exam results, syllabi, and official keys, sabse pehle.
             </p>
             <div className="flex items-center gap-2 pt-2 text-xs">
               <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
-              <span className="text-slate-400 font-semibold tracking-wide">Live Updates Running</span>
+              <span className="text-slate-400 font-semibold tracking-wide">Live Result Updates Running</span>
             </div>
           </div>
 
@@ -33,7 +46,7 @@ export default function Footer() {
           <div>
             <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-1.5">
               <Briefcase className="w-4 h-4 text-primary" />
-              <span>Sarkari Naukri</span>
+              <span>Jobs Categories</span>
             </h3>
             <ul className="space-y-2 text-xs">
               <li>
@@ -59,7 +72,7 @@ export default function Footer() {
             </h3>
             <ul className="space-y-2 text-xs">
               <li>
-                <Link to="/results" className="hover:text-primary-hover transition-colors">Latest Sarkari Results</Link>
+                <Link to="/results" className="hover:text-primary-hover transition-colors">Latest Results</Link>
               </li>
               <li>
                 <Link to="/admit-card" className="hover:text-primary-hover transition-colors">Admit Cards Download</Link>
@@ -97,24 +110,19 @@ export default function Footer() {
             </p>
             <div className="flex items-center gap-2 text-slate-300">
               <Mail className="w-4 h-4 text-primary" />
-              <span>support@sarkariprep.com</span>
+              <span>support@resultveda.com</span>
             </div>
           </div>
 
         </div>
 
         <div className="border-t border-slate-800 mt-8 pt-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© {currentYear} SarkariCMS. All rights reserved. Created for Phase 1 CMS Deployment.</p>
+          <p>© {currentYear} ResultVeda. All rights reserved.</p>
           <div className="flex gap-4">
-            <div className="flex gap-4">
-              <Link to="/about" className="hover:text-primary transition-colors">About Us</Link>
-              <Link to="/terms" className="hover:text-primary transition-colors">Terms of Use</Link>
-              <Link to="/contact" className="hover:text-primary transition-colors">Contact Us</Link>
-            </div>
-            <Link to="/admin" className="text-primary hover:underline font-semibold flex items-center gap-1">
-              <span>Admin Dashboard Access</span>
-              <ExternalLink className="w-3 h-3" />
-            </Link>
+            <Link to="/veda-admin-6721" className="hover:text-primary transition-colors">Admin Panel</Link>
+            <Link to="/about" className="hover:text-primary transition-colors">About Us</Link>
+            <Link to="/terms" className="hover:text-primary transition-colors">Terms of Use</Link>
+            <Link to="/contact" className="hover:text-primary transition-colors">Contact Us</Link>
           </div>
         </div>
       </div>

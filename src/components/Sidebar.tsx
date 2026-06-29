@@ -8,7 +8,7 @@ export default function Sidebar() {
   const handleLogout = async () => {
     try {
       await adminLogout();
-      navigate('/admin/login');
+      navigate('/veda-admin-6721/login');
     } catch (err) {
       console.error('Logout failed:', err);
     }
@@ -23,7 +23,7 @@ export default function Sidebar() {
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xs font-bold tracking-tight text-slate-800 dark:text-white uppercase">Sarkari Admin</h2>
+            <h2 className="text-xs font-bold tracking-tight text-slate-800 dark:text-white uppercase">ResultVeda Admin</h2>
             <p className="text-[9px] text-slate-400 font-semibold font-mono">PORTAL MANAGEMENT</p>
           </div>
         </div>
@@ -33,7 +33,7 @@ export default function Sidebar() {
           <p className="nav-section-label">Core Updates</p>
           <nav className="space-y-0.5">
             <NavLink
-              to="/admin"
+              to="/veda-admin-6721"
               end
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
@@ -42,7 +42,7 @@ export default function Sidebar() {
             </NavLink>
 
             <NavLink
-              to="/admin/posts"
+              to="/veda-admin-6721/posts"
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               <FileText />
@@ -50,7 +50,7 @@ export default function Sidebar() {
             </NavLink>
 
             <NavLink
-              to="/admin/categories"
+              to="/veda-admin-6721/categories"
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               <FolderTree />
@@ -58,7 +58,7 @@ export default function Sidebar() {
             </NavLink>
 
             <NavLink
-              to="/admin/ai-generator"
+              to="/veda-admin-6721/ai-generator"
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               <Sparkles />

@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPosts, getCategories } from '../../lib/supabase';
+import { getPosts, getCategories, migrateFromFirestore } from '../../lib/supabase';
 import { Post, Category } from '../../lib/types';
 import { 
   FileText, CheckCircle, Clock, Folder, 
-  PlusCircle, RefreshCw, ChevronRight, AlertCircle 
+  PlusCircle, RefreshCw, ChevronRight, AlertCircle, ShieldAlert,
+  Database, ArrowRightLeft, Check
 } from 'lucide-react';
 
 export default function Dashboard() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<{success?: boolean, error?: string, count?: {posts: number, cats: number}} | null>(null);
 
   const loadDashboardData = async () => {
     try {
@@ -32,16 +35,119 @@ export default function Dashboard() {
     loadDashboardData();
   }, []);
 
+  const handleMigration = async () => {
+    if (!window.confirm('This will copy all data from Firestore to Supabase. Continue?')) return;
+    
+    setMigrating(true);
+    setMigrationStatus(null);
+    try {
+      const result = await migrateFromFirestore();
+      if (result.success) {
+        setMigrationStatus({ 
+          success: true, 
+          count: { posts: (result as any).posts || 0, cats: (result as any).categories || 0 } 
+        });
+        loadDashboardData();
+      } else {
+        setMigrationStatus({ success: false, error: result.error });
+      }
+    } catch (err: any) {
+      setMigrationStatus({ success: false, error: err.message });
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   // Compute key stats
   const totalPosts = posts.length;
   const publishedCount = posts.filter(p => p.status === 'published').length;
   const draftCount = posts.filter(p => p.status === 'draft').length;
   const totalCategories = categories.length;
+  
+  const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || 'https://kvyeumipuyooaprxlsah.supabase.co';
+  const isSupabaseConfigured = !!supabaseUrl && supabaseUrl !== '';
+
+  const isDatabaseSetupNeeded = isSupabaseConfigured && totalCategories === 0 && totalPosts === 0;
 
   const recentPosts = posts.slice(0, 5);
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      
+      {/* Configuration Warnings */}
+      <div className="space-y-3">
+        {!isSupabaseConfigured && (
+          <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 rounded-xl flex items-start gap-4">
+            <div className="bg-rose-100 dark:bg-rose-900/40 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-rose-800 dark:text-rose-200">Supabase Credentials Missing</h3>
+              <p className="text-xs text-rose-700/80 dark:text-rose-400/80 leading-relaxed">
+                Your application is not connected to Supabase. Detected URL: <code className="bg-rose-100 dark:bg-rose-900/60 px-1 rounded">{supabaseUrl || 'None'}</code>. 
+                Please add <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> to your environment variables or secrets.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Migration Tool */}
+        <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-lg text-indigo-600 dark:text-indigo-400">
+            <ArrowRightLeft className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-indigo-800 dark:text-indigo-200">Data Migration Utility</h3>
+            <p className="text-xs text-indigo-700/80 dark:text-indigo-400/80 leading-relaxed">
+              Move your existing data from Firestore to Supabase in one click. Use this if your "previous posts" are not showing up.
+            </p>
+            {migrationStatus && (
+              <div className={`mt-2 text-xs font-medium flex items-center gap-1.5 ${migrationStatus.success ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {migrationStatus.success ? (
+                  <>
+                    <Check className="w-3 h-3" />
+                    <span>Migrated {migrationStatus.count?.posts} posts and {migrationStatus.count?.cats} categories!</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Migration failed: {migrationStatus.error}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <button 
+            onClick={handleMigration}
+            disabled={migrating || !isSupabaseConfigured}
+            className={`btn btn-sm ${migrating ? 'loading' : ''} bg-indigo-600 hover:bg-indigo-700 text-white border-none`}
+          >
+            {migrating ? 'Migrating...' : 'Start Migration'}
+          </button>
+        </div>
+
+        {/* Database Setup Notice */}
+        {isDatabaseSetupNeeded && (
+          <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-lg text-amber-600 dark:text-amber-400">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-amber-800 dark:text-amber-200">Database Schema Required</h3>
+              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 leading-relaxed">
+                Connection established, but no tables found. Please execute the SQL schema in your Supabase SQL Editor.
+              </p>
+            </div>
+            <a 
+              href="/supabase_schema.sql" 
+              target="_blank" 
+              className="btn bg-amber-600 hover:bg-amber-700 text-white border-none btn-sm"
+            >
+              View SQL Schema
+            </a>
+          </div>
+        )}
+      </div>
       
       {/* Title Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -60,7 +166,7 @@ export default function Dashboard() {
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Sync Stats</span>
           </button>
-          <Link to="/admin/posts/new" className="btn btn-primary btn-sm">
+          <Link to="/veda-admin-6721/posts/new" className="btn btn-primary btn-sm">
             <PlusCircle className="w-3.5 h-3.5" />
             <span>New Job Post</span>
           </Link>
@@ -130,7 +236,7 @@ export default function Dashboard() {
             <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-900">
                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Chronological Updates</h2>
-                <Link to="/admin/posts" className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                <Link to="/veda-admin-6721/posts" className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
                   <span>View Full Directory</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </Link>
@@ -171,7 +277,7 @@ export default function Dashboard() {
 
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <Link 
-                          to={`/admin/posts/edit/${post.id}`}
+                          to={`/veda-admin-6721/posts/edit/${post.id}`}
                           className="btn btn-secondary btn-sm"
                         >
                           Configure

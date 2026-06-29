@@ -16,7 +16,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     async function checkAuth() {
       try {
         const user = await getCurrentUser();
-        setAuthenticated(!!user);
+        setAuthenticated(!!user && user.role === 'admin');
       } catch (err) {
         console.error('Auth verification failed:', err);
         setAuthenticated(false);
@@ -37,7 +37,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!authenticated) {
-    return <Navigate to="/admin/login" state={{ from: location }} replace />;
+    return <Navigate to="/veda-admin-6721/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

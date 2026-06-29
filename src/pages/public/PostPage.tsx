@@ -94,7 +94,7 @@ export default function PostPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-semibold text-slate-500">Parsing sarkari bulletin...</span>
+        <span className="text-sm font-semibold text-slate-500">Parsing ResultVeda bulletin...</span>
       </div>
     );
   }
@@ -157,11 +157,58 @@ export default function PostPage() {
     ]
   };
 
+  const jobPostingSchema = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    "title": post.title,
+    "description": post.short_info_en || post.title,
+    "datePosted": post.published_at || new Date().toISOString(),
+    "validThrough": post.end_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    "employmentType": "FULL_TIME",
+    "hiringOrganization": {
+      "@type": "Organization",
+      "name": post.department || post.exam_type || "Government of India",
+      "sameAs": post.official_site || "https://resultveda.com"
+    },
+    "jobLocation": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "IN",
+        "addressRegion": post.state?.join(', ') || "All India"
+      }
+    }
+  };
+
+  const seoTitle = `${post.title} 2026 - ResultVeda`;
+  const seoDescription = post.short_info_en || `Apply for ${post.title}. Check eligibility, age limit, syllabus, and download official notification.`;
+
+  const speakableSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": seoTitle,
+    "speakable": {
+      "@type": "SpeakableSpecification",
+      "xpath": [
+        "/*[local-name()='html']/*[local-name()='head']/*[local-name()='title']",
+        "/*[local-name()='html']/*[local-name()='head']/*[local-name()='meta'][@name='description']/@content"
+      ]
+    },
+    "url": `https://resultveda.com/job/${post.slug}`
+  };
+
   return (
     <div className="space-y-6 pb-20 sm:pb-6">
       <Helmet>
+        <title>{seoTitle}</title>
+        <meta name="description" content={seoDescription} />
+        <link rel="canonical" href={`https://resultveda.com/job/${post.slug}`} />
+        <meta property="og:title" content={seoTitle} />
+        <meta property="og:description" content={seoDescription} />
+        <meta property="og:type" content="article" />
+        <meta property="og:url" content={`https://resultveda.com/job/${post.slug}`} />
         <script type="application/ld+json">
-          {JSON.stringify(faqSchema)}
+          {JSON.stringify([faqSchema, jobPostingSchema, speakableSchema])}
         </script>
       </Helmet>
       
@@ -608,7 +655,7 @@ export default function PostPage() {
 
             <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg text-[10px] text-slate-400 leading-relaxed flex gap-1.5 items-start">
               <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-              <span>SarkariCMS only lists verified notifications. Check eligibility before paying form fee.</span>
+              <span>ResultVeda only lists verified notifications. Check eligibility before paying form fee.</span>
             </div>
           </div>
 
