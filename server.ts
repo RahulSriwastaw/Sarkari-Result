@@ -1407,40 +1407,64 @@ OUTPUT FORMAT — Ye exact JSON return kar:
   "review_reason": ""
 }
 
-BILINGUAL_HTML TEMPLATE (write in simple Hindi-English mix):
-<div class="mb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
-  <p><strong>[Department] [Post] Bharti [Year]:</strong> [Hook - kya post hai, kitni vacancy, kab tak apply]</p>
-  <p>[Application process - step by step: registration, fee, documents upload, submit. Simple language mein]</p>
-  <p>[Eligibility quick summary - kaun apply kar sakta hai, minimum qualification]</p>
-  <p>[Practical tip - "Last date se 2-3 din pehle apply karo, server slow ho jaata hai last day"]</p>
+BILINGUAL_HTML CONTENT RULES:
+bilingual_html mein SIRF detailed notification details likho — TABLES mein.
+Jo data already form ke upar ke fields mein fill ho gaya hai (title, dates, fees, age) woh REPEAT MAT KARO bilingual_html mein.
+
+bilingual_html mein YE LIKHO:
+1. SHORT INTRO (2-3 lines max — kya post hai, kab tak apply)
+2. DETAILED VACANCY TABLE — post-wise breakdown (jaise screenshot mein hai):
+   - Post Name | Total Posts | Eligibility/Qualification Required (full details)
+3. HOW TO APPLY steps (3-4 numbered steps)  
+4. IMPORTANT LINKS table — Apply Online, Download Notification, Official Website etc.
+   - SIRF official .gov.in links use karo
+   - Agar PDF link kisi third-party site se aa raha hai, woh link as-is de do (server automatically download karke re-host karega)
+5. HIDDEN SEO TAGS (20+ keywords)
+
+DATA REPEAT RULES (STRICT):
+- Dates (start, end, exam, admit card) — already form fields mein hain, bilingual_html mein REPEAT MAT KARO
+- Application Fee — already form mein hai, bilingual_html mein dobara MAT LIKHO
+- Age Limit — already form mein hai, bilingual_html mein dobara MAT LIKHO
+- Title — already field mein hai, bilingual_html mein MAT LIKHO
+- SIRF woh data likho jo form fields mein NAHI hai: vacancy details, eligibility per post, how to apply, important links
+
+HTML TEMPLATE:
+<div class="mb-3 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+  <p>[2-3 line intro — department ne ye bharti nikali, total kitni posts, kab se kab tak apply, kya qualification chahiye — short mein]</p>
 </div>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-    <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">💰 Application Fees</h3>
-    <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-      <li><strong>General/OBC/EWS:</strong> ₹[Amount]</li>
-      <li><strong>SC/ST/PH:</strong> ₹[Amount]</li>
-      <li><em>Payment: [Online/Offline modes]</em></li>
-    </ul>
-  </div>
-  <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-    <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">🕒 Age Limit</h3>
-    <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-      <li><strong>Minimum:</strong> [X] Years</li>
-      <li><strong>Maximum:</strong> [Y] Years</li>
-      <li><em>Relaxation: OBC +3, SC/ST +5, PH +10</em></li>
-    </ul>
-  </div>
-</div>
-<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
-  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">🎓 Qualification & Eligibility</h3>
+<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm">
+  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">📋 Vacancy Details — Post Wise Breakdown</h3>
   <div class="overflow-x-auto">
     <table class="w-full text-left text-xs border-collapse">
       <thead><tr class="bg-slate-100 dark:bg-slate-950 font-bold border-b border-slate-200 dark:border-slate-800">
-        <th class="p-2">Post Name</th><th class="p-2">Vacancies</th><th class="p-2">Required Qualification</th>
+        <th class="p-2 border border-slate-200 dark:border-slate-700">Post Name</th>
+        <th class="p-2 border border-slate-200 dark:border-slate-700">Total Post</th>
+        <th class="p-2 border border-slate-200 dark:border-slate-700">Eligibility / Qualification</th>
       </tr></thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        [Rows with actual data]
+      <tbody>
+        <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">[Post 1]</td><td class="p-2 border border-slate-200 dark:border-slate-700">[Count]</td><td class="p-2 border border-slate-200 dark:border-slate-700">[Full qualification details — degree, stream, trade, etc.]</td></tr>
+        <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">[Post 2]</td><td class="p-2 border border-slate-200 dark:border-slate-700">[Count]</td><td class="p-2 border border-slate-200 dark:border-slate-700">[Full qualification details]</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
+  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">📝 How to Apply</h3>
+  <ol class="list-decimal pl-4 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+    <li>Official website pe jao aur registration karo</li>
+    <li>Personal details, education, photo/signature upload karo</li>
+    <li>Application fee online pay karo</li>
+    <li>Final submit karke printout le lo</li>
+  </ol>
+</div>
+<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
+  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">🔗 Important Links</h3>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs border-collapse">
+      <tbody>
+        <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Apply Online</td><td class="p-2 border border-slate-200 dark:border-slate-700"><a href="[official .gov.in link]" target="_blank" class="text-primary hover:underline">Click Here</a></td></tr>
+        <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Download Notification</td><td class="p-2 border border-slate-200 dark:border-slate-700"><a href="[.gov.in PDF link OR leave for server re-hosting]" target="_blank" class="text-primary hover:underline">Click Here</a></td></tr>
+        <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Official Website</td><td class="p-2 border border-slate-200 dark:border-slate-700"><a href="[.gov.in]" target="_blank" class="text-primary hover:underline">Visit</a></td></tr>
       </tbody>
     </table>
   </div>
@@ -1448,14 +1472,19 @@ BILINGUAL_HTML TEMPLATE (write in simple Hindi-English mix):
 <div class="sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" aria-hidden="false">
   <h2>Search Tags:</h2>
   <div class="flex flex-wrap gap-1.5">
-    [20+ keyword spans in English, Hindi, Hinglish for SEO]
+    [20+ keyword spans — English, Hindi Devnagari, Hinglish — department name, post name, bharti, vacancy, online form, sarkari result etc]
   </div>
 </div>
 
+PDF LINK HANDLING:
+- Agar notification PDF ka link .gov.in se hai → directly use karo
+- Agar PDF link kisi third-party website se mil raha hai (like sarkariresult, freejobalert etc) → woh link as-is notification_link mein daal do. Server backend automatically detect karega, download karega, aur apne server par re-host karke link replace kar dega. Tum bas link daal do chahe kahi se bhi ho.
+
 YAAD RAKH:
-- Source URL sirf identification ke liye hai. Output mein source ka ZERO trace hona chahiye.
-- Placeholder text (Title, Post Name, Department Name etc) KABHI mat likh. Real data likh.
-- Agar data verify nahi ho raha, null rakh — guess KABHI mat kar.`;
+- Source URL sirf identification ke liye hai. Output mein source website ka naam/brand ZERO trace hona chahiye.
+- Placeholder text KABHI mat likh. Real data likh.
+- Data REPEAT mat kar — jo upar ke fields mein hai woh bilingual_html mein dubara mat likh.
+- bilingual_html mein focus karo: vacancy table (post-wise), eligibility details, how to apply, important links.`;
 
     let userPrompt = '';
     const config: any = {
@@ -1669,14 +1698,22 @@ User Notes: ${userInstructions || 'None'}`;
         }
       };
 
-      // Strip non-official links from all link fields
+      // Strip non-official links from link fields (EXCEPT notification_link — that gets re-hosted)
       if (!isOfficialLink(parsedResult.apply_link)) {
         console.log(`[Sanitizer] Removed non-official apply_link: ${parsedResult.apply_link}`);
         parsedResult.apply_link = '';
       }
-      if (!isOfficialLink(parsedResult.notification_link)) {
-        console.log(`[Sanitizer] Removed non-official notification_link: ${parsedResult.notification_link}`);
-        parsedResult.notification_link = '';
+      // notification_link: Allow ANY PDF link — will be downloaded and re-hosted
+      // Only strip if it's not a PDF/document link
+      if (parsedResult.notification_link && !isOfficialLink(parsedResult.notification_link)) {
+        const notifLower = (parsedResult.notification_link || '').toLowerCase();
+        const isPdfOrDoc = notifLower.includes('.pdf') || notifLower.includes('.docx') || notifLower.includes('notification') || notifLower.includes('advt');
+        if (!isPdfOrDoc) {
+          console.log(`[Sanitizer] Removed non-official non-PDF notification_link: ${parsedResult.notification_link}`);
+          parsedResult.notification_link = '';
+        } else {
+          console.log(`[Sanitizer] Keeping PDF notification_link for re-hosting: ${parsedResult.notification_link}`);
+        }
       }
       if (!isOfficialLink(parsedResult.official_website)) {
         console.log(`[Sanitizer] Removed non-official official_website: ${parsedResult.official_website}`);
@@ -1727,10 +1764,11 @@ User Notes: ${userInstructions || 'None'}`;
         );
       }
 
-      // If notification_link is official, download and host locally
+      // If notification_link exists (official or third-party PDF), download and host locally
       let notificationLink = parsedResult.notification_link || '';
-      if (notificationLink && notificationLink.startsWith('http') && isOfficialLink(notificationLink)) {
-        console.log(`[File Hoster] Official notification link detected: "${notificationLink}". Downloading and hosting locally...`);
+      if (notificationLink && notificationLink.startsWith('http')) {
+        // Download and re-host ANY PDF link (official or third-party) on our server
+        console.log(`[File Hoster] Notification link detected: "${notificationLink}". Downloading and hosting locally...`);
         const hostedUrl = await downloadAndHostFile(notificationLink);
         const originalLink = notificationLink;
         parsedResult.notification_link = hostedUrl;
