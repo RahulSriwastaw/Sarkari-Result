@@ -904,45 +904,154 @@ app.post('/api/scrape-website', async (req, res) => {
 
     const $ = cheerio.load(html);
 
-    // Discover and resolve any PDF and advertisement/notification document links before removing elements
-    const pdfLinks: string[] = [];
-    $('a').each((i, el) => {
-      const href = $(el).attr('href');
-      if (href) {
-        const hrefTrimmed = href.trim();
-        const lowerHref = hrefTrimmed.toLowerCase();
-        if (
-          lowerHref.endsWith('.pdf') ||
-          lowerHref.includes('.pdf?') ||
-          lowerHref.endsWith('.docx') ||
-          lowerHref.includes('.docx?') ||
-          lowerHref.includes('download') ||
-          lowerHref.includes('advt') ||
-          lowerHref.includes('notification') ||
-          lowerHref.includes('advertisement')
-        ) {
-          try {
-            const absoluteUrl = new URL(hrefTrimmed, targetUrl).toString();
-            if (!pdfLinks.includes(absoluteUrl) && absoluteUrl.startsWith('http')) {
-              pdfLinks.push(absoluteUrl);
-            }
-          } catch (e) {
-            // Ignore invalid relative URL mappings
-          }
+    // ===== STRUCTURED EXTRACTION (like Python BeautifulSoup approach) =====
+    
+    // Step 1: Preserve links inside anchor tags (text + URL format)
+    $('a[href]').each((i, el) => {
+      const linkText = $(el).text().trim();
+      const linkUrl = $(el).attr('href') || '';
+      if (linkText && !linkUrl.startsWith('javascript:')) {
+        try {
+          const absoluteUrl = new URL(linkUrl, targetUrl).toString();
+          $(el).replaceWith(`${linkText} (${absoluteUrl})`);
+        } catch {
+          $(el).replaceWith(linkText);
         }
       }
     });
 
-    // Remove non-content elements to optimize text extraction
-    $('script, style, iframe, img, svg, noscript, header, footer, nav, link, meta').remove();
+    // Step 2: Extract structured data from tables
+    const structuredData: any = {
+      post_name: '',
+      important_dates: {} as Record<string, string>,
+      application_fee: {} as Record<string, string>,
+      age_limit: '',
+      vacancy_details: [] as string[],
+      useful_links: {} as Record<string, string>,
+      eligibility: '',
+    };
 
-    let visibleText = $('body').text() || $('html').text() || '';
+    // Get post name from h1
+    const h1 = $('h1').first().text().trim();
+    if (h1) structuredData.post_name = h1;
 
-    // Normalize spacing and line breaks
+    // Collect ALL td text for regex (this gets ALL table cells from the ENTIRE page)
+    const allTdTexts: string[] = [];
+    $('td').each((i, el) => {
+      const cellText = $(el).text().trim();
+      if (cellText) allTdTexts.push(cellText);
+    });
+    const fullTableText = allTdTexts.join(' | ');
+
+    // Also collect ALL table rows as structured lines
+    const allTableRows: string[] = [];
+    $('tr').each((i, el) => {
+      const cells = $(el).find('td, th');
+      if (cells.length > 0) {
+        const rowText = cells.map((j, cell) => $(cell).text().trim()).get().join(' | ');
+        if (rowText.trim().length > 3) {
+          allTableRows.push(rowText);
+        }
+      }
+    });
+
+    // Extract dates using regex
+    const datePatterns: Record<string, RegExp> = {
+      'Application Begin': /Application Begin\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Last Date': /Last Date\s*(?:for\s*)?(?:Apply\s*Online|Fee\s*Payment)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Pay Exam Fee Last Date': /(?:Pay\s*Exam\s*Fee\s*Last\s*Date|Fee\s*Payment\s*Last\s*Date)\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Correction Date': /(?:Correction|Modification)\s*(?:Last\s*Date)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Exam Date': /Exam\s*Date\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Admit Card': /Admit\s*Card\s*(?:Available)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      'Result Date': /Result\s*(?:Declare)?\s*Date?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+    };
+
+    for (const [key, pattern] of Object.entries(datePatterns)) {
+      const match = fullTableText.match(pattern);
+      if (match) structuredData.important_dates[key] = match[1];
+    }
+
+    // Extract fees using regex  
+    const feePatterns: Record<string, RegExp> = {
+      'General / OBC / EWS': /General\s*\/?\s*OBC\s*\/?\s*EWS\s*[:|]?\s*(\d+)\/?-?/i,
+      'SC / ST': /SC\s*\/?\s*ST\s*[:|]?\s*(\d+)\/?-?/i,
+      'All Category Female': /(?:All\s*Category\s*)?Female\s*[:|]?\s*(\d+)\/?-?/i,
+    };
+
+    for (const [key, pattern] of Object.entries(feePatterns)) {
+      const match = fullTableText.match(pattern);
+      if (match) structuredData.application_fee[key] = `₹${match[1]}/-`;
+    }
+
+    // Extract from tables — age, vacancy, links
+    $('table').each((i, table) => {
+      const tableText = $(table).text().replace(/\s+/g, ' ').trim();
+      const tableTextLower = tableText.toLowerCase();
+
+      // Age limit table
+      if (tableTextLower.includes('minimum age') || tableTextLower.includes('maximum age') || tableTextLower.includes('age limit')) {
+        if (!structuredData.age_limit) {
+          structuredData.age_limit = tableText.slice(0, 600);
+        }
+      }
+
+      // Vacancy details table
+      if ((tableTextLower.includes('vacancy') || tableTextLower.includes('post name')) && 
+          (tableTextLower.includes('total') || tableTextLower.includes('ur') || tableTextLower.includes('obc'))) {
+        $(table).find('tr').each((j, tr) => {
+          const rowText = $(tr).find('td, th').map((k, td) => $(td).text().trim()).get().join(' | ');
+          if (rowText && rowText.length > 5) {
+            structuredData.vacancy_details.push(rowText);
+          }
+        });
+      }
+
+      // Useful/Important links table
+      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here')) {
+        $(table).find('tr').each((j, tr) => {
+          const cols = $(tr).find('td');
+          if (cols.length >= 2) {
+            const key = $(cols[0]).text().trim();
+            const val = $(cols[1]).text().trim();
+            if (key && val && val.length > 3) {
+              structuredData.useful_links[key] = val;
+            }
+          }
+        });
+      }
+
+      // Eligibility/Qualification
+      if (tableTextLower.includes('eligibility') || tableTextLower.includes('qualification') || tableTextLower.includes('education')) {
+        if (!structuredData.eligibility) {
+          structuredData.eligibility = tableText.slice(0, 1000);
+        }
+      }
+    });
+
+    // Step 3: Get full visible text — ONLY remove scripts/styles, keep ALL content elements
+    $('script, style, noscript, link[rel="stylesheet"], meta').remove();
+    
+    let visibleText = '';
+    // Try to get main content area first (common selectors for post content)
+    const contentSelectors = ['#post', '.post', '.entry-content', '#content', 'article', '.post-content', 'main', '.main-content'];
+    for (const selector of contentSelectors) {
+      const contentEl = $(selector);
+      if (contentEl.length > 0 && contentEl.text().trim().length > 500) {
+        visibleText = contentEl.text().trim();
+        break;
+      }
+    }
+    
+    // Fallback: get entire body
+    if (!visibleText || visibleText.length < 500) {
+      visibleText = $('body').text() || $('html').text() || '';
+    }
+
+    // Normalize spacing
     visibleText = visibleText
       .replace(/\r/g, '')
       .replace(/[ \t]+/g, ' ')
-      .replace(/\n\s*\n/g, '\n\n')
+      .replace(/\n\s*\n\s*\n/g, '\n\n')
       .trim();
 
     // Final check: if extracted text is too short or looks like a protection page
@@ -956,17 +1065,89 @@ app.post('/api/scrape-website', async (req, res) => {
       });
     }
 
-    // Append found document links to help Gemini associate and host them
-    if (pdfLinks.length > 0) {
-      visibleText += `\n\n[Extracted PDF and Advertisement Document Links from website]:\n` + pdfLinks.map(link => `- ${link}`).join('\n');
+    // Step 4: Build final structured output text for AI
+    let structuredOutput = '';
+
+    if (structuredData.post_name) {
+      structuredOutput += `POST NAME: ${structuredData.post_name}\n\n`;
     }
 
-    // Limit text length to avoid token limit errors
-    if (visibleText.length > 40000) {
-      visibleText = visibleText.slice(0, 40000) + '\n\n[Content truncated due to size limits]';
+    if (Object.keys(structuredData.important_dates).length > 0) {
+      structuredOutput += `IMPORTANT DATES:\n`;
+      for (const [k, v] of Object.entries(structuredData.important_dates)) {
+        structuredOutput += `  ${k}: ${v}\n`;
+      }
+      structuredOutput += '\n';
     }
 
-    res.json({ text: visibleText, method: scrapeMethod, isFallback: usedFallback });
+    if (Object.keys(structuredData.application_fee).length > 0) {
+      structuredOutput += `APPLICATION FEE:\n`;
+      for (const [k, v] of Object.entries(structuredData.application_fee)) {
+        structuredOutput += `  ${k}: ${v}\n`;
+      }
+      structuredOutput += '\n';
+    }
+
+    if (structuredData.age_limit) {
+      structuredOutput += `AGE LIMIT:\n  ${structuredData.age_limit}\n\n`;
+    }
+
+    if (structuredData.vacancy_details.length > 0) {
+      structuredOutput += `VACANCY DETAILS:\n`;
+      structuredData.vacancy_details.forEach((v: string) => {
+        structuredOutput += `  ${v}\n`;
+      });
+      structuredOutput += '\n';
+    }
+
+    if (structuredData.eligibility) {
+      structuredOutput += `ELIGIBILITY:\n  ${structuredData.eligibility}\n\n`;
+    }
+
+    if (Object.keys(structuredData.useful_links).length > 0) {
+      structuredOutput += `USEFUL LINKS:\n`;
+      for (const [k, v] of Object.entries(structuredData.useful_links)) {
+        structuredOutput += `  ${k}: ${v}\n`;
+      }
+      structuredOutput += '\n';
+    }
+
+    // Add all table rows as raw data (gives AI maximum context)
+    if (allTableRows.length > 0) {
+      structuredOutput += `ALL TABLE DATA (${allTableRows.length} rows):\n`;
+      allTableRows.forEach((row: string) => {
+        structuredOutput += `  ${row}\n`;
+      });
+      structuredOutput += '\n';
+    }
+
+    // Combine structured + full text
+    let finalOutput = '';
+    if (structuredOutput.length > 100) {
+      finalOutput = `=== STRUCTURED DATA EXTRACTED ===\n${structuredOutput}\n=== FULL PAGE TEXT ===\n${visibleText}`;
+    } else {
+      finalOutput = visibleText;
+    }
+
+    // Discover PDF links
+    const pdfLinks: string[] = [];
+    $('a[href]').each((i, el) => {
+      // Links already replaced with text, scan fullTableText for URLs
+    });
+    const urlsInText = finalOutput.match(/https?:\/\/[^\s\)\]]+\.(pdf|docx?)[^\s\)\]]*/gi) || [];
+    const uniquePdfLinks = [...new Set(urlsInText)];
+
+    if (uniquePdfLinks.length > 0) {
+      finalOutput += `\n\n[Extracted Document Links]:\n` + uniquePdfLinks.map(link => `- ${link}`).join('\n');
+    }
+
+    // Limit text length
+    if (finalOutput.length > 40000) {
+      finalOutput = finalOutput.slice(0, 40000) + '\n\n[Content truncated]';
+    }
+
+    console.log(`[Scraper] Structured extraction complete. Structured: ${structuredOutput.length} chars, Total: ${finalOutput.length} chars`);
+    res.json({ text: finalOutput, method: scrapeMethod, isFallback: false });
   } catch (err: any) {
     console.error('Error scraping website:', err);
     res.status(500).json({ error: `Failed to read website: ${err.message || err}` });
