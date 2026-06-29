@@ -917,7 +917,48 @@ app.post('/api/scrape-website', async (req, res) => {
 
     // ===== STRUCTURED EXTRACTION (like Python BeautifulSoup approach) =====
     
-    // Step 1: Preserve links inside anchor tags (text + URL format)
+    // Step 0: Extract ALL links FIRST (before modifying DOM)
+    const extractedLinks: Record<string, string> = {};
+    const allPageLinks: Array<{text: string, url: string}> = [];
+    
+    $('a[href]').each((i, el) => {
+      const linkText = $(el).text().trim();
+      const linkUrl = $(el).attr('href') || '';
+      if (linkText && linkUrl && !linkUrl.startsWith('javascript:') && !linkUrl.startsWith('#')) {
+        try {
+          const absoluteUrl = new URL(linkUrl, targetUrl).toString();
+          allPageLinks.push({ text: linkText, url: absoluteUrl });
+        } catch {}
+      }
+    });
+
+    // Extract useful links from the "Important Links" table specifically
+    $('table').each((i, table) => {
+      const tableTextLower = $(table).text().toLowerCase();
+      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here')) {
+        $(table).find('tr').each((j, tr) => {
+          const cols = $(tr).find('td');
+          if (cols.length >= 2) {
+            const keyText = $(cols[0]).text().trim();
+            // Get the actual URL from anchor tag in 2nd column
+            const linkEl = $(cols[1]).find('a[href]').first();
+            let linkUrl = '';
+            if (linkEl.length > 0) {
+              const href = linkEl.attr('href') || '';
+              if (href && !href.startsWith('javascript:')) {
+                try { linkUrl = new URL(href, targetUrl).toString(); } catch {}
+              }
+            }
+            const valText = $(cols[1]).text().trim();
+            if (keyText && (linkUrl || valText)) {
+              extractedLinks[keyText] = linkUrl || valText;
+            }
+          }
+        });
+      }
+    });
+
+    // Step 1: NOW replace anchor tags with text+URL format for text extraction
     $('a[href]').each((i, el) => {
       const linkText = $(el).text().trim();
       const linkUrl = $(el).attr('href') || '';
@@ -938,8 +979,9 @@ app.post('/api/scrape-website', async (req, res) => {
       application_fee: {} as Record<string, string>,
       age_limit: '',
       vacancy_details: [] as string[],
-      useful_links: {} as Record<string, string>,
+      useful_links: extractedLinks,
       eligibility: '',
+      how_to_apply: '',
     };
 
     // Get post name from h1
@@ -1017,19 +1059,7 @@ app.post('/api/scrape-website', async (req, res) => {
         });
       }
 
-      // Useful/Important links table
-      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here')) {
-        $(table).find('tr').each((j, tr) => {
-          const cols = $(tr).find('td');
-          if (cols.length >= 2) {
-            const key = $(cols[0]).text().trim();
-            const val = $(cols[1]).text().trim();
-            if (key && val && val.length > 3) {
-              structuredData.useful_links[key] = val;
-            }
-          }
-        });
-      }
+      // Useful/Important links table — already extracted in Step 0, skip here
 
       // Eligibility/Qualification
       if (tableTextLower.includes('eligibility') || tableTextLower.includes('qualification') || tableTextLower.includes('education')) {
@@ -1037,7 +1067,23 @@ app.post('/api/scrape-website', async (req, res) => {
           structuredData.eligibility = tableText.slice(0, 1000);
         }
       }
+
+      // How to Apply section
+      if (tableTextLower.includes('how to fill') || tableTextLower.includes('how to apply')) {
+        if (!structuredData.how_to_apply) {
+          structuredData.how_to_apply = tableText.slice(0, 1000);
+        }
+      }
     });
+
+    // Also extract "How to Apply" from non-table content (often in paragraphs/headings)
+    if (!structuredData.how_to_apply) {
+      const bodyText = $('body').text();
+      const howToMatch = bodyText.match(/How to (?:Fill|Apply)[^\n]*(?:\n[^\n]+){1,8}/i);
+      if (howToMatch) {
+        structuredData.how_to_apply = howToMatch[0].trim().slice(0, 1000);
+      }
+    }
 
     // Step 3: Get full visible text — ONLY remove scripts/styles, keep ALL content elements
     $('script, style, noscript, link[rel="stylesheet"], meta').remove();
@@ -1116,11 +1162,27 @@ app.post('/api/scrape-website', async (req, res) => {
     }
 
     if (Object.keys(structuredData.useful_links).length > 0) {
-      structuredOutput += `USEFUL LINKS:\n`;
+      structuredOutput += `USEFUL IMPORTANT LINKS:\n`;
       for (const [k, v] of Object.entries(structuredData.useful_links)) {
         structuredOutput += `  ${k}: ${v}\n`;
       }
       structuredOutput += '\n';
+    } else if (allPageLinks.length > 0) {
+      // Fallback: list all significant page links
+      structuredOutput += `PAGE LINKS FOUND:\n`;
+      const significantLinks = allPageLinks.filter(l => 
+        l.url.includes('.gov.in') || l.url.includes('.nic.in') || 
+        l.url.includes('.pdf') || l.text.toLowerCase().includes('apply') ||
+        l.text.toLowerCase().includes('notification') || l.text.toLowerCase().includes('official')
+      );
+      (significantLinks.length > 0 ? significantLinks : allPageLinks.slice(0, 15)).forEach(l => {
+        structuredOutput += `  ${l.text}: ${l.url}\n`;
+      });
+      structuredOutput += '\n';
+    }
+
+    if (structuredData.how_to_apply) {
+      structuredOutput += `HOW TO APPLY:\n  ${structuredData.how_to_apply}\n\n`;
     }
 
     // Add all table rows as raw data (gives AI maximum context)
@@ -1479,12 +1541,23 @@ HTML TEMPLATE:
 PDF LINK HANDLING:
 - Agar notification PDF ka link .gov.in se hai → directly use karo
 - Agar PDF link kisi third-party website se mil raha hai (like sarkariresult, freejobalert etc) → woh link as-is notification_link mein daal do. Server backend automatically detect karega, download karega, aur apne server par re-host karke link replace kar dega. Tum bas link daal do chahe kahi se bhi ho.
+- Scraped data mein agar "USEFUL IMPORTANT LINKS" section hai jismein actual URLs hain (Apply Online, Download Notification, Official Website) — unhe use karo!
+- apply_link mein SIRF .gov.in URL daal (agar scraped links mein .gov.in apply link diya hai to wahi use kar)
+- notification_link mein PDF link daal (chahe kisi bhi domain ka ho — server re-host karega)
+
+HOW TO APPLY SECTION:
+- Agar scraped data mein "HOW TO APPLY" content hai — usse bilingual_html mein include karo
+- Application process: email, postal address, online portal — jo bhi method ho clearly likh
+- Agar application email se bhejna hai toh email address clearly mention karo
+- Agar postal address hai toh address clearly likh with pincode
+- Student ko step-by-step samjhao — simple language mein
 
 YAAD RAKH:
 - Source URL sirf identification ke liye hai. Output mein source website ka naam/brand ZERO trace hona chahiye.
 - Placeholder text KABHI mat likh. Real data likh.
 - Data REPEAT mat kar — jo upar ke fields mein hai woh bilingual_html mein dubara mat likh.
-- bilingual_html mein focus karo: vacancy table (post-wise), eligibility details, how to apply, important links.`;
+- bilingual_html mein focus karo: vacancy table (post-wise), eligibility details, how to apply, important links.
+- "Sarkari Result" ya kisi bhi private website ka reference bilingual_html mein BILKUL mat daal.`;
 
     let userPrompt = '';
     const config: any = {
