@@ -5,6 +5,7 @@ import {
 } from '../../lib/supabase';
 import { supabase } from '../../lib/supabase';
 import { Category, Post } from '../../lib/types';
+import { generatePostSlug, detectCategory } from '../../lib/postUtils';
 import { 
   ArrowLeft, Save, Eye, Clipboard, HelpCircle, RefreshCw, FileCode,
   Sparkles, UploadCloud, Globe, FileText, CheckCircle, AlertCircle, ChevronDown, ChevronUp,
@@ -52,13 +53,15 @@ export default function PostForm() {
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
 
   const handleGenerateSlug = () => {
-    if (!titleEn) return;
-    const formatted = titleEn
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-');
-    setSlug(formatted);
+    if (!titleEn && !postName) return;
+    const slug = generatePostSlug({
+      post_name: postName,
+      department: department,
+      title_en: titleEn,
+      advt_no: advtNo,
+      start_date: startDate,
+    });
+    setSlug(slug);
   };
 
   const handleResetForm = () => {
@@ -112,33 +115,46 @@ export default function PostForm() {
 
   const handleAiFileUpload = async (selectedFile: File) => {
     const lowerName = selectedFile.name.toLowerCase();
-    const validExtensions = ['.pdf', '.docx'];
+    const validExtensions = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp'];
     const isValid = validExtensions.some(ext => lowerName.endsWith(ext));
 
     if (!isValid) {
-      setAiErrorMessage('Unsupported file type. Please upload a valid PDF or DOCX notification.');
+      setAiErrorMessage('Unsupported file type. Please upload a PDF, DOCX, or Image (PNG/JPG/WEBP).');
       return;
     }
+
+    const isImage = ['.png', '.jpg', '.jpeg', '.webp'].some(ext => lowerName.endsWith(ext));
 
     setAiFile(selectedFile);
     setAiErrorMessage(null);
     setAiSuccessMessage(null);
     setAiLoading(true);
-    setAiStatusMessage('Uploading and extracting raw text from document...');
+    setAiStatusMessage(isImage ? 'Reading screenshot with Gemini Vision AI...' : 'Uploading and extracting raw text from document...');
 
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const base64String = (reader.result as string).split(',')[1];
-        const fileType = lowerName.endsWith('.pdf') ? 'pdf' : 'docx';
-        const res = await fetch('/api/parse-document', {
+
+        let endpoint = '/api/parse-document';
+        let body: any = {};
+
+        if (isImage) {
+          // Use Gemini Vision for images
+          const mimeType = lowerName.endsWith('.png') ? 'image/png' 
+            : lowerName.endsWith('.webp') ? 'image/webp' 
+            : 'image/jpeg';
+          endpoint = '/api/parse-image';
+          body = { imageBase64: base64String, fileName: selectedFile.name, mimeType };
+        } else {
+          const fileType = lowerName.endsWith('.pdf') ? 'pdf' : 'docx';
+          body = { fileBase64: base64String, fileName: selectedFile.name, fileType };
+        }
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileBase64: base64String,
-            fileName: selectedFile.name,
-            fileType
-          })
+          body: JSON.stringify(body)
         });
 
         const data = await res.json();
@@ -284,12 +300,28 @@ export default function PostForm() {
 
       // Autogenerate URL slug
       if (genData.title_en) {
-        const formatted = genData.title_en
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .trim()
-          .replace(/\s+/g, '-');
+        const formatted = generatePostSlug({
+          post_name: genData.post_name,
+          department: genData.department,
+          title_en: genData.title_en,
+          advt_no: genData.advt_no,
+          start_date: genData.start_date,
+        });
         setSlug(formatted);
+      }
+
+      // Auto-detect category
+      const detectedCat = detectCategory(
+        { department: genData.department, post_name: genData.post_name, title_en: genData.title_en, state: genData.state },
+        categories
+      );
+      // Prefer AI-suggested category, then detectCategory fallback
+      const aiSuggestedCat = genData.suggested_category;
+      const finalCat = (aiSuggestedCat && categories.find(c => c.slug === aiSuggestedCat)) 
+        ? aiSuggestedCat 
+        : detectedCat;
+      if (finalCat) {
+        setCategorySlug(finalCat);
       }
 
       setAiSuccessMessage('🎉 Crawl and Auto-Fill Complete! The AI Agent crawled the portal page, extracted the recruitment metrics, and successfully populated the Post Title, Vacancies, and Eligibility Criteria fields.');
@@ -356,12 +388,27 @@ export default function PostForm() {
 
       // Autogenerate URL slug
       if (data.title_en) {
-        const formatted = data.title_en
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .trim()
-          .replace(/\s+/g, '-');
+        const formatted = generatePostSlug({
+          post_name: data.post_name,
+          department: data.department,
+          title_en: data.title_en,
+          advt_no: data.advt_no,
+          start_date: data.start_date,
+        });
         setSlug(formatted);
+      }
+
+      // Auto-detect category
+      const detectedCat2 = detectCategory(
+        { department: data.department, post_name: data.post_name, title_en: data.title_en, state: data.state },
+        categories
+      );
+      const aiSuggestedCat2 = data.suggested_category;
+      const finalCat2 = (aiSuggestedCat2 && categories.find(c => c.slug === aiSuggestedCat2))
+        ? aiSuggestedCat2
+        : detectedCat2;
+      if (finalCat2) {
+        setCategorySlug(finalCat2);
       }
 
       setAiSuccessMessage('🎉 Success! All form fields, dates, links, summaries and HTML matrices have been auto-filled by AI. Review and edit the fields below before saving.');
@@ -679,7 +726,7 @@ export default function PostForm() {
                   className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${aiSourceType === 'pdf' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   <UploadCloud className="w-3.5 h-3.5" />
-                  <span>Upload official notification PDF/Word</span>
+                  <span>Upload PDF/Image/Screenshot</span>
                 </button>
                 <button
                   type="button"
@@ -708,7 +755,7 @@ export default function PostForm() {
                 <div className="border-2 border-dashed border-indigo-200/60 dark:border-indigo-900/40 rounded-xl p-6 text-center hover:bg-indigo-50/10 transition-colors cursor-pointer relative">
                   <input
                     type="file"
-                    accept=".pdf,.docx"
+                    accept=".pdf,.docx,.png,.jpg,.jpeg,.webp"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) handleAiFileUpload(file);
@@ -721,7 +768,7 @@ export default function PostForm() {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Click to upload or drag & drop</p>
-                      <p className="text-[10px] text-slate-400">PDF or DOCX official notification file (Max 15MB)</p>
+                      <p className="text-[10px] text-slate-400">PDF, DOCX, or Screenshot (PNG/JPG) — Max 15MB</p>
                     </div>
                   </div>
                 </div>

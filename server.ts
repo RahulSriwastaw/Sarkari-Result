@@ -161,13 +161,14 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
     department = deptMatches[0];
   }
 
-  let post_name = 'Various Group A & B Vacancies';
+  let post_name = 'Various Posts';
   const postMatches = text.match(/(?:Recruitment for the post of|Recruitment of|post of|designation of|invites applications for)\s+([A-Za-z0-9\s,]+)/i);
   if (postMatches && postMatches[1].trim().length > 5) {
     post_name = postMatches[1].trim().split('\n')[0].slice(0, 80);
   } else {
-    const instPost = instructions.match(/(?:post|job|title)\s*(?::|=)?\s*([A-Za-z0-9\s]+)/i);
-    if (instPost && instPost[1].trim().length > 3) {
+    // Try to get post name from user instructions (NOT from "title" keyword which catches HTML titles)
+    const instPost = instructions.match(/(?:post|job|position|designation)\s*(?::|=)\s*([A-Za-z0-9\s]+)/i);
+    if (instPost && instPost[1].trim().length > 3 && instPost[1].trim().toLowerCase() !== 'title') {
       post_name = instPost[1].trim();
     }
   }
@@ -182,15 +183,35 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
   if (text.includes('[USE_AI_GROUNDING]') && sourceUrl) {
     try {
       const urlObj = new URL(sourceUrl);
-      const paths = urlObj.pathname.split('/').filter(p => p.length > 0 && p !== '2026');
+      const paths = urlObj.pathname.split('/').filter(p => 
+        p.length > 2 && !/^\d{4}$/.test(p) && p !== 'index' && p !== 'page'
+      );
       if (paths.length > 0) {
         let lastSegment = paths[paths.length - 1];
-        lastSegment = lastSegment.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        post_name = lastSegment;
+        lastSegment = lastSegment
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+          .replace(/\b(Online|Form|Apply|Recruitment|Result|Download)\b/gi, '')
+          .trim();
+        if (lastSegment.length > 3 && lastSegment.toLowerCase() !== 'title') {
+          post_name = lastSegment;
+        }
       }
-      const domainParts = urlObj.hostname.replace('www.', '').split('.');
-      if (domainParts.length > 0) {
-        department = domainParts[0].toUpperCase() + ' Recruitment';
+      // Extract department from known patterns in URL
+      const hostname = urlObj.hostname.replace('www.', '').toLowerCase();
+      if (hostname.includes('sarkari')) {
+        // Don't use sarkariresult as department — look at path instead
+        const pathDept = paths.find(p => 
+          ['railway', 'ssc', 'upsc', 'bank', 'police', 'army', 'navy', 'airforce', 'isro', 'drdo'].some(k => p.toLowerCase().includes(k))
+        );
+        if (pathDept) {
+          department = pathDept.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+      } else {
+        const domainParts = hostname.split('.');
+        if (domainParts.length > 0 && domainParts[0].length > 2) {
+          department = domainParts[0].toUpperCase() + ' Recruitment';
+        }
       }
     } catch (e) {}
   }
@@ -222,11 +243,8 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
   const short_info_en = `Online applications are invited from eligible candidates for the recruitment of ${post_name} in ${department}. Eligible and interested candidates can read the complete notification detail below and apply online before the closing date.`;
   const short_info_hi = `${department} द्वारा ${post_name} के पदों पर भर्ती के लिए ऑनलाइन आवेदन आमंत्रित किए गए हैं। इच्छुक उम्मीदवार अधिसूचना को पढ़कर ऑनलाइन आवेदन कर सकते हैं।`;
 
-  const safeUrl = sourceUrl || 'https://resultveda.com';
-  let originUrl = 'https://resultveda.com';
-  try {
-    originUrl = new URL(safeUrl).origin;
-  } catch (_) {}
+  const safeUrl = '';
+  const originUrl = '';
 
   const bilingual_html = `
 <div class="mb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
@@ -307,11 +325,11 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
     admit_card_date: null,
     exam_date: null,
     result_date: null,
-    apply_link: safeUrl,
-    notification_link: safeUrl,
+    apply_link: '',
+    notification_link: '',
     admit_card_link: '',
     result_link: '',
-    official_website: originUrl,
+    official_website: '',
     short_info_en,
     short_info_hi,
     state: ['National'],
@@ -549,6 +567,74 @@ app.post('/api/parse-document', async (req, res) => {
   }
 });
 
+// Endpoint: Parse Image (Screenshot) using Gemini Vision to extract recruitment data
+app.post('/api/parse-image', async (req, res) => {
+  try {
+    const { imageBase64, fileName, mimeType } = req.body;
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'No image data provided.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'GEMINI_API_KEY is required for image parsing.' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    console.log(`[Image Parser] Processing image: ${fileName || 'screenshot'} (${mimeType || 'image/png'})`);
+
+    const imageMime = mimeType || 'image/png';
+
+    const response = await generateContentWithFallback(
+      ai,
+      [
+        {
+          inlineData: {
+            mimeType: imageMime,
+            data: imageBase64
+          }
+        },
+        {
+          text: `Ye ek government job recruitment notification ka screenshot hai. Isko dhyan se padh aur SAARA text extract kar.
+
+EXTRACT KARNA HAI:
+1. Post/Job ka naam
+2. Department/Organization
+3. Total vacancies (exact number)
+4. Important dates — Start date, Last date, Exam date (YYYY-MM-DD format mein)
+5. Application fee — category-wise (General, OBC, SC/ST, Female)
+6. Age limit — minimum, maximum, relaxation
+7. Educational qualification — kya chahiye (degree, class, stream)
+8. Apply link (agar dikhta hai)
+9. Official website
+10. Advertisement/Notification number
+11. Koi bhi table data — vacancy breakdown, post-wise details
+
+OUTPUT: Plain text mein saari extracted information de. Tables ko readable format mein likh. Dates ko clearly mention kar. Numbers exact likh. Kuch bhi miss mat kar screenshot mein se.
+
+NOTE: Agar multiple pages ka screenshot hai, sab ka data combine karke de.`
+        }
+      ],
+      {},
+      'gemini-2.5-flash'
+    );
+
+    const extractedText = response.text || '';
+    
+    if (!extractedText || extractedText.trim().length < 20) {
+      return res.status(400).json({ error: 'Could not extract meaningful text from the image. Please try a clearer screenshot.' });
+    }
+
+    console.log(`[Image Parser] Successfully extracted ${extractedText.length} chars from image.`);
+    res.json({ text: extractedText.trim() });
+  } catch (err: any) {
+    console.error('Error parsing image:', err);
+    res.status(500).json({ error: `Failed to parse image: ${err.message || err}` });
+  }
+});
+
 // Endpoint: Scrape Website HTML and return Clean Text
 app.post('/api/scrape-website', async (req, res) => {
   try {
@@ -565,30 +651,129 @@ app.post('/api/scrape-website', async (req, res) => {
     let html = '';
     let usedFallback = false;
     let scrapeMethod = 'direct';
+    let jinaText = '';
 
+    // ====== METHOD 0 (PRIORITY): Jina AI Reader - Best for protected websites ======
     try {
-      console.log(`[Scraper] Attempting direct fetch for ${targetUrl}`);
+      console.log(`[Scraper] Attempting Jina AI Reader for ${targetUrl}`);
+      const jinaUrl = `https://r.jina.ai/${targetUrl}`;
+      const jinaResponse = await fetch(jinaUrl, {
+        headers: {
+          'Accept': 'text/plain',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'X-Return-Format': 'text',
+          'X-No-Cache': 'true',
+        },
+        signal: AbortSignal.timeout(25000)
+      });
+
+      if (jinaResponse.ok) {
+        jinaText = await jinaResponse.text();
+        
+        // Check if Jina returned a bot-protection page or error page
+        const isBlockedContent = jinaText.includes('403 ERROR') || 
+          jinaText.includes('Request blocked') || 
+          jinaText.includes('cloudfront') ||
+          jinaText.includes('Access Denied') ||
+          jinaText.includes('Attention Required') ||
+          jinaText.includes('Just a moment') ||
+          jinaText.includes('Checking your browser') ||
+          jinaText.trim().length < 200;
+
+        if (!isBlockedContent && jinaText.trim().length > 200) {
+          scrapeMethod = 'jina-reader';
+          console.log(`[Scraper] Jina AI Reader succeeded for ${targetUrl} (${jinaText.length} chars)`);
+
+          // Jina returns clean markdown/text directly - no need for cheerio parsing
+          const pdfLinkMatches = jinaText.match(/https?:\/\/[^\s\)]+\.pdf[^\s\)]*/gi) || [];
+          const docLinks = jinaText.match(/https?:\/\/[^\s\)]+\.(docx?|pdf)[^\s\)]*/gi) || [];
+          const allDocLinks = [...new Set([...pdfLinkMatches, ...docLinks])];
+
+          let finalText = jinaText
+            .replace(/\r/g, '')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s*\n\s*\n/g, '\n\n')
+            .trim();
+
+          if (allDocLinks.length > 0) {
+            finalText += `\n\n[Extracted PDF and Advertisement Document Links from website]:\n` + allDocLinks.map(link => `- ${link}`).join('\n');
+          }
+
+          if (finalText.length > 40000) {
+            finalText = finalText.slice(0, 40000) + '\n\n[Content truncated due to size limits]';
+          }
+
+          return res.json({ text: finalText, method: scrapeMethod, isFallback: false });
+        } else {
+          console.log(`[Scraper] Jina returned blocked/protection page for ${targetUrl}. Skipping.`);
+        }
+      } else {
+        console.log(`[Scraper] Jina returned HTTP ${jinaResponse.status} for ${targetUrl}`);
+      }
+      throw new Error('Jina blocked or insufficient content');
+    } catch (jinaErr: any) {
+      console.log(`[Scraper] Jina AI Reader failed for ${targetUrl}: ${jinaErr.message}. Trying direct fetch...`);
+    }
+
+    // ====== METHOD 1: Direct fetch with Android Mobile UA (bypasses CloudFront) ======
+    try {
+      console.log(`[Scraper] Attempting mobile Android fetch for ${targetUrl}`);
       const response = await fetch(targetUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 15; V2312 Build/AP3A.240905.015.A2_MOD1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.7827.91 Mobile Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'max-age=0',
+          'sec-ch-ua': '"Android WebView";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+          'sec-ch-ua-mobile': '?1',
+          'sec-ch-ua-platform': '"Android"',
           'Upgrade-Insecure-Requests': '1',
-          'Referer': new URL(targetUrl).origin + '/',
+          'DNT': '1',
+          'x-requested-with': 'mark.via.gp',
+          'sec-fetch-site': 'none',
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-user': '?1',
+          'sec-fetch-dest': 'document',
+          'priority': 'u=0, i',
         },
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(12000)
       });
 
       if (response.ok) {
         html = await response.text();
-        scrapeMethod = 'direct';
-        console.log(`[Scraper] Direct fetch succeeded for ${targetUrl}`);
+        scrapeMethod = 'mobile-android';
+        console.log(`[Scraper] Mobile Android fetch succeeded for ${targetUrl} (${html.length} chars)`);
       } else {
         throw new Error(`HTTP status ${response.status}`);
       }
     } catch (err: any) {
-      console.log(`[Scraper] Direct fetch failed for ${targetUrl}: ${err.message}. Trying direct with Googlebot UA...`);
+      console.log(`[Scraper] Mobile Android fetch failed for ${targetUrl}: ${err.message}. Trying Desktop Chrome...`);
+      
+      // ====== METHOD 2: Desktop Chrome UA ======
+      try {
+        const response2 = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Upgrade-Insecure-Requests': '1',
+            'sec-fetch-site': 'none',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-user': '?1',
+            'sec-fetch-dest': 'document',
+          },
+          signal: AbortSignal.timeout(8000)
+        });
+        
+        if (response2.ok) {
+          html = await response2.text();
+          scrapeMethod = 'desktop-chrome';
+          console.log(`[Scraper] Desktop Chrome fetch succeeded for ${targetUrl}`);
+        } else {
+           throw new Error(`HTTP status ${response2.status}`);
+        }
+      } catch (errDesktop: any) {
+        console.log(`[Scraper] Desktop Chrome failed for ${targetUrl}: ${errDesktop.message}. Trying Googlebot UA...`);
       
       try {
         const response2 = await fetch(targetUrl, {
@@ -686,14 +871,34 @@ app.post('/api/scrape-website', async (req, res) => {
           }
         }
       }
+      }
     }
 
     if (usedFallback || !html || html.trim().length === 0) {
       // Instead of failing completely, return a fallback payload
       // that tells the downstream AI endpoints to use Google Search Grounding to fetch the content.
       return res.json({ 
-        text: `[USE_AI_GROUNDING] The target website could not be scraped directly due to security protections. The AI agent must use its native Google Search capability to search for "${targetUrl}" and extract the job recruitment details directly from the web.`,
+        text: `[USE_AI_GROUNDING] The target website could not be scraped directly due to security protections (CloudFront/Cloudflare). The AI agent must use its native Google Search capability to search for "${targetUrl}" and extract the job recruitment details directly from the web.`,
         title: 'Content protected - AI will search instead'
+      });
+    }
+
+    // Check if the fetched HTML is actually a bot-protection/error page
+    const lowerHtml = html.toLowerCase();
+    const isBotProtection = 
+      (lowerHtml.includes('403 error') && lowerHtml.includes('cloudfront')) ||
+      (lowerHtml.includes('access denied')) ||
+      (lowerHtml.includes('attention required') && lowerHtml.includes('cloudflare')) ||
+      (lowerHtml.includes('just a moment') && lowerHtml.includes('cloudflare')) ||
+      (lowerHtml.includes('checking your browser') && lowerHtml.includes('ray id')) ||
+      (lowerHtml.includes('request blocked') && lowerHtml.includes('cloudfront')) ||
+      (lowerHtml.includes('captcha') && lowerHtml.includes('challenge'));
+
+    if (isBotProtection) {
+      console.log(`[Scraper] Detected bot-protection page for ${targetUrl}. Switching to AI grounding.`);
+      return res.json({
+        text: `[USE_AI_GROUNDING] The target website "${targetUrl}" returned a bot-protection page (Cloudflare/CloudFront 403). Direct scraping is blocked. The AI agent must use its native Google Search capability to research this URL and extract the full recruitment details from cached/indexed web pages.`,
+        title: 'Bot protection detected - AI will research via Google Search'
       });
     }
 
@@ -739,6 +944,17 @@ app.post('/api/scrape-website', async (req, res) => {
       .replace(/[ \t]+/g, ' ')
       .replace(/\n\s*\n/g, '\n\n')
       .trim();
+
+    // Final check: if extracted text is too short or looks like a protection page
+    if (visibleText.length < 150 || 
+        (visibleText.toLowerCase().includes('403 error') && visibleText.length < 500) ||
+        (visibleText.toLowerCase().includes('access denied') && visibleText.length < 500)) {
+      console.log(`[Scraper] Extracted text too short or appears to be error page (${visibleText.length} chars). Switching to AI grounding.`);
+      return res.json({
+        text: `[USE_AI_GROUNDING] The target website "${targetUrl}" was fetched but contained only a protection/error page with minimal content. The AI agent must use its native Google Search capability to search for the job recruitment details at this URL.`,
+        title: 'Insufficient content - AI will research via Google Search'
+      });
+    }
 
     // Append found document links to help Gemini associate and host them
     if (pdfLinks.length > 0) {
@@ -813,10 +1029,13 @@ app.post('/api/verify-scraped-data', async (req, res) => {
     let prompt = '';
     if (isGroundingRequest) {
       prompt = `You are an expert real-time job/recruitment notification verification agent.
-The website scraping was blocked, so you must use your Google Search tool to search for the following URL:
+The website scraping was blocked. Use your Google Search tool to search for this exact URL and verify the content:
 "${sourceUrl}"
 
-After searching and retrieving the latest job/recruitment details for that specific post, verify if it is an official government job recruitment, exam notification, or related recruitment resource.
+RESEARCH STEPS:
+1. Search for the exact URL to find details about this recruitment post
+2. Also search for the organization name + "recruitment notification" to cross-verify
+3. Check if this is a legitimate government job posting from an official body
 
 Return a valid JSON object matching this schema precisely:
 {
@@ -828,8 +1047,8 @@ Return a valid JSON object matching this schema precisely:
     "eligibility_criteria": true/false,
     "important_dates": true/false
   },
-  "verification_summary": "Short 1-2 sentence summary of what was found via search, specifying the department and key details if present.",
-  "warning_message": "Specify any missing critical fields or concerns, or empty string if none."
+  "verification_summary": "2-3 sentences describing what you found — department name, post name, vacancy count, and key dates if available.",
+  "warning_message": "Any concerns about authenticity, missing critical fields, or data inconsistencies. Empty string if all looks good."
 }
 
 Do not return markdown, backticks, or other text outside the JSON. Return raw JSON.`;
@@ -874,7 +1093,15 @@ Do not return markdown, backticks, or other text outside the JSON. Return raw JS
     });
 
     const outputText = response.text || '';
-    const cleanOutput = outputText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let cleanOutput = outputText.replace(/```json/g, '').replace(/```/g, '').trim();
+    // Extract JSON if wrapped in extra text (common with grounding responses)
+    if (!cleanOutput.startsWith('{')) {
+      const jsonStart = cleanOutput.indexOf('{');
+      const jsonEnd = cleanOutput.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        cleanOutput = cleanOutput.slice(jsonStart, jsonEnd + 1);
+      }
+    }
     const result = JSON.parse(cleanOutput);
     res.json(result);
   } catch (err: any) {
@@ -909,112 +1136,134 @@ app.post('/api/generate-bulletin', async (req, res) => {
       }
     });
 
-    const systemPrompt = `You are an expert Sarkari Exam Notification Analyst and Content Writer. Your task is to extract job recruitment details from the official government notifications text and convert them into a structured JSON payload ready to be saved in our ResultVeda portal database.
+    const systemPrompt = `Tu ek experienced sarkari job content writer hai. 10+ saal ka experience hai government job portals pe.
 
-STRICT DESIGN & CONTENT RULES (English-Only Short Blog Posts, Hidden Tags, Verification & Accuracy):
-1. ENGLISH ONLY POSTS: All main text, fee matrix, age limits, and qualification tables MUST be generated strictly in English. This reduces token overhead and keeps the content highly professional.
-2. NO HINDI MANUAL BULLETIN: Do NOT write any manual bulletin in Hindi or bilingual text in the main body. Instead, write a highly optimized, lightweight Short Blog Post in English (1-2 crisp paragraphs) at the very beginning of "bilingual_html" containing primary job-related keywords (such as the vacancy name, department, registration procedures) to ensure lightning-fast Google indexation and ranking.
-3. HIDDEN REGIONAL & SEO SEARCH TAGS: To maximize regional search discoverability without cluttering the UI, generate a rich list of at least 15 regional search tags in English, Hindi (Devnagari), and Hinglish (e.g. "sarkari naukri", "latest vacancy", "ssc bharti", "sarkari result"). Put these tags at the very bottom of the "bilingual_html" block, and MUST wrap them inside a container with the class "sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" so that they are 100% hidden from human visitors but perfectly crawlable by Google Bot crawler.
-4. TRANSLATION ECONOMY: Even for the "title_hi" and "short_info_hi" fields, use clean, readable English or simplified bilingual Hinglish (phonetic) text to save AI tokens (e.g. "SSC CGL Recruitment Online Form 2026").
-5. ABSOLUTE ACCURACY & TIME DOUBLE-CHECK: Thoroughly verify and crosscheck all vacancy numbers, fees, age criteria, and especially examine dates against the current year/notification text to ensure zero inaccuracy. Job details must be 100% accurate.
-6. OFFICIAL NOTIFICATION LINKS: Generally try to discover and extract official government PDF notification links (e.g. from domains ending in .gov.in, .nic.in, etc.). If no official government link is available, and only third-party/unofficial links (like private blog uploads or third-party PDF file links) are found, provide that link in "notification_link". Our background server will automatically detect it and download/re-host it locally to eliminate watermark and copyright issues from other websites.
-7. STRICT CONTENT ISOLATION: Absolutely NO external links from the source website should be included in the final generated post, except for essential official job application or notification links. Ensure no website branding, developer signatures, or unrelated navigation links from the source URL appear.
-8. HUMANIZED LANGUAGE: Write the entire bulletin in basic, easy-to-understand, natural, and human-like English. Avoid overly complex terminology or AI-sounding phrasing. Use a simple, conversational, and professional tone that a candidate would easily understand.
-9. DATA VERIFICATION: Independently verify all extracted data (dates, fees, criteria) against your internal search knowledge or search results if grounding is active. If any data is contradictory or missing, prioritize the information from official sources. If data is completely missing, explicitly state "Not specified" rather than guessing.
+TARGET READER: Bihar/UP ka 20-28 saal ka student, mobile pe padhta hai. Simple language chahiye.
 
-Return a valid, parsed JSON object matching this schema precisely:
+TERA KAAM:
+1. Scraped text/URL se identify kar ki KAUNSI job hai, KAUNSA department hai
+2. Apni knowledge + Google Search (agar available) se VERIFY kar — dates, fees, vacancy, eligibility SAB cross-check kar
+3. Verified data ke basis par 100% ORIGINAL post likh — KUCH BHI copy mat kar source se
+4. Post simple Hindi-English mix mein likh — student ko samajh aaye
+
+WRITING RULES:
+- Simple Hindi-English mix mein likho, koi fancy shabd nahi
+- "सुनहरा अवसर", "अत्यंत महत्वपूर्ण", "अभ्यर्थियों को सूचित" — ye sab BANNED phrases hain
+- Short sentences, mobile pe easy to read
+- Numbers highlight karo: 50,000 पद, ₹25,000 salary
+- Dates clearly mention karo with full context
+- Tone: helpful dost jaisa jo senior student ko guide kar raha hai, formal government letter jaisa NAHI
+- Content: 500-800 words in bilingual_html
+
+DATA ACCURACY RULES:
+- Vacancy count: exact number likho. 10 lakh se zyada ho to something is wrong — recheck karo
+- Dates: YYYY-MM-DD format. Future dates only. Past dates mat include karo (today is ${new Date().toISOString().split('T')[0]})
+- Fees: exact amount with category-wise breakdown
+- Age limit: exact with relaxation details
+- Education: specific degree/class requirement
+- Agar koi data verify nahi ho raha — null rakh, guess mat kar
+
+LINK RULES (STRICT — KISI BHI CONDITION MEIN BREAK MAT KARNA):
+- apply_link: SIRF official .gov.in / .nic.in portal ya empty ""
+- notification_link: SIRF official .gov.in / .nic.in PDF ya empty ""
+- official_website: SIRF .gov.in / .nic.in domain ya empty ""
+- sarkariresult.com, freejobalert.com ya KISI BHI private website ka link BILKUL NAHI
+- Agar official link nahi mila → empty string "" rakh
+- Source URL ka link KABHI output mein mat daal
+
+CATEGORY DISAMBIGUATION (IMPORTANT):
+- "Indian Navy SSC Officer" = defence category (SSC = Short Service Commission)
+- "SSC CGL/CHSL/MTS" = ssc category (SSC = Staff Selection Commission)
+- "NDA" defence context = National Defence Academy
+- "RRB" = Railway (NOT anything else)
+- Always check FULL context before deciding category
+
+OUTPUT FORMAT — Ye exact JSON return kar:
 {
-  "title_en": "Main headlines in English, highly optimized for SEO.",
-  "title_hi": "Headlines in English/Hinglish.",
-  "post_name": "Job Designation.",
-  "department": "Department Name.",
-  "advt_no": "Advertisement Number.",
+  "title_en": "Real SEO title with department + post + year (e.g. 'Indian Navy SSC Officer Recruitment June 2027: Apply Online')",
+  "title_hi": "Same in Hinglish (e.g. 'Indian Navy SSC Officer Bharti June 2027 Online Form')",
+  "post_name": "Actual official post name (e.g. 'SSC Officer - Executive/Technical Branch')",
+  "department": "Full official department (e.g. 'Indian Navy')",
+  "advt_no": "Advertisement number if available or null",
   "vacancies": 100,
-  "start_date": "YYYY-MM-DD",
-  "end_date": "YYYY-MM-DD",
+  "start_date": "YYYY-MM-DD or null",
+  "end_date": "YYYY-MM-DD or null",
   "admit_card_date": null,
   "exam_date": null,
   "result_date": null,
-  "apply_link": "",
-  "notification_link": "",
+  "apply_link": ".gov.in link ONLY or empty string",
+  "notification_link": ".gov.in PDF ONLY or empty string",
   "admit_card_link": "",
   "result_link": "",
-  "official_website": "",
-  "short_info_en": "Short overview.",
-  "short_info_hi": "Short overview.",
-  "state": ["State 1", "State 2"],
-  "level": "National/State",
+  "official_website": ".gov.in domain ONLY or empty string",
+  "short_info_en": "2-3 lines key info (vacancies, last date, qualification)",
+  "short_info_hi": "Same in simple Hindi",
+  "state": ["All India"],
+  "level": "National",
+  "suggested_category": "defence/ssc/railway/banking/upsc/state-psc/police/teaching — based on ACTUAL department",
   "eligibility_criteria": {
-    "education": ["Degree/Diploma details"],
-    "age_limit": "Age details",
-    "other": ["Other criteria"]
+    "education": ["Exact qualification required"],
+    "age_limit": "18-27 years with relaxation details",
+    "other": ["Physical standards if any", "Nationality"]
   },
-  "bilingual_html": "Rich styled HTML string..."
+  "bilingual_html": "Full HTML post — see template below",
+  "meta_title": "Max 60 chars SEO title",
+  "meta_description": "Max 155 chars with vacancy + last date",
+  "focus_keyword": "main target keyword for this post",
+  "tags": ["relevant", "tags"],
+  "needs_review": false,
+  "review_reason": ""
 }
 
-CRITICAL RULES for 'bilingual_html' block:
-1. Start with a clean, lightweight Short Blog Post (1-2 paragraphs) in English describing the vacancy details, how to fill the form, and a brief overview. Wrap it in a styled div container:
-   <div class="mb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
-     <p>[Paragraph 1 details...]</p>
-     <p>[Paragraph 2 details...]</p>
-   </div>
-2. Wrap fee matrix and age criteria inside a 2-column grid layout on desktop:
-   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-     <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-       <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">💰 Application Fees</h3>
-       <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-         <li><strong>General / OBC / EWS:</strong> ₹ [Amount]</li>
-         <li><strong>SC / ST / PH:</strong> ₹ [Amount]</li>
-         <li><strong>Female Candidates:</strong> ₹ [Amount]</li>
-         <li><em>[Payment details]</em></li>
-       </ul>
-     </div>
-     <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-       <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">🕒 Age Limits (As of [Cut-off Date])</h3>
-       <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-         <li><strong>Minimum Age:</strong> [Min] Years</li>
-         <li><strong>Maximum Age:</strong> [Max] Years</li>
-         <li><em>[Age relaxation details]</em></li>
-       </ul>
-     </div>
-   </div>
-3. Below the grid, add the Educational Qualification & Eligibility details inside a clean responsive card table:
-   <div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
-     <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">🎓 Educational Qualification & Eligibility</h3>
-     <div class="overflow-x-auto">
-       <table class="w-full text-left text-xs border-collapse">
-         <thead>
-           <tr class="bg-slate-100 dark:bg-slate-950 font-bold border-b border-slate-200 dark:border-slate-800">
-             <th class="p-2">Post Name / Code</th>
-             <th class="p-2">Total Vacancies</th>
-             <th class="p-2">Required Qualification</th>
-           </tr>
-         </thead>
-         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-           <!-- Dynamic rows populated from parsed document -->
-           <tr>
-             <td class="p-2 font-semibold">[Post Name]</td>
-             <td class="p-2">[X] Posts</td>
-             <td class="p-2">[Details of degree, physical criteria, stream requirement, diploma, etc.]</td>
-           </tr>
-         </tbody>
-       </table>
-     </div>
-   </div>
-4. At the very bottom of the 'bilingual_html' block, add the Multilingual Search Keywords & Tags section. To keep the post light and clean, you MUST hide this tags section using the specific 'sr-only' and hiding classes so that human users never see them, but search engine crawlers and bots can index them:
-   <div class="sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" aria-hidden="false">
-     <h2>🏷️ Regional Search, Keywords & Indexing Tags for Googlebot crawling:</h2>
-     <div class="flex flex-wrap gap-1.5">
-       <span class="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-medium border border-indigo-100 dark:border-indigo-900/30">[English Keyword]</span>
-       <span class="px-2 py-0.5 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 rounded text-[10px] font-medium border border-slate-150 dark:border-slate-800">[Hindi Keyword in Devnagari]</span>
-       <span class="px-2 py-0.5 bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 rounded text-[10px] font-medium border border-teal-100 dark:border-teal-900/30">[Hinglish Keyword]</span>
-       <!-- Add at least 15 highly relevant regional keywords (e.g. ssc bharti, ssc naukri, sarkari result, ssc apply online, bharti, bharti alert, vacancy details) -->
-     </div>
-   </div>
+BILINGUAL_HTML TEMPLATE (write in simple Hindi-English mix):
+<div class="mb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
+  <p><strong>[Department] [Post] Bharti [Year]:</strong> [Hook - kya post hai, kitni vacancy, kab tak apply]</p>
+  <p>[Application process - step by step: registration, fee, documents upload, submit. Simple language mein]</p>
+  <p>[Eligibility quick summary - kaun apply kar sakta hai, minimum qualification]</p>
+  <p>[Practical tip - "Last date se 2-3 din pehle apply karo, server slow ho jaata hai last day"]</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+    <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">💰 Application Fees</h3>
+    <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+      <li><strong>General/OBC/EWS:</strong> ₹[Amount]</li>
+      <li><strong>SC/ST/PH:</strong> ₹[Amount]</li>
+      <li><em>Payment: [Online/Offline modes]</em></li>
+    </ul>
+  </div>
+  <div class="card p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+    <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1 text-sm">🕒 Age Limit</h3>
+    <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+      <li><strong>Minimum:</strong> [X] Years</li>
+      <li><strong>Maximum:</strong> [Y] Years</li>
+      <li><em>Relaxation: OBC +3, SC/ST +5, PH +10</em></li>
+    </ul>
+  </div>
+</div>
+<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
+  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">🎓 Qualification & Eligibility</h3>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs border-collapse">
+      <thead><tr class="bg-slate-100 dark:bg-slate-950 font-bold border-b border-slate-200 dark:border-slate-800">
+        <th class="p-2">Post Name</th><th class="p-2">Vacancies</th><th class="p-2">Required Qualification</th>
+      </tr></thead>
+      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+        [Rows with actual data]
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" aria-hidden="false">
+  <h2>Search Tags:</h2>
+  <div class="flex flex-wrap gap-1.5">
+    [20+ keyword spans in English, Hindi, Hinglish for SEO]
+  </div>
+</div>
 
-Ensure all details like deadlines, application fee, age limit, educational streams, and physical standards (if any, like height/chest) are accurately represented. Ensure the text is natural, grammatically correct, and professional. Double-check all dates and fees for correctness.
-
-If there are any user hints/instructions provided, prioritize them!`;
+YAAD RAKH:
+- Source URL sirf identification ke liye hai. Output mein source ka ZERO trace hona chahiye.
+- Placeholder text (Title, Post Name, Department Name etc) KABHI mat likh. Real data likh.
+- Agar data verify nahi ho raha, null rakh — guess KABHI mat kar.`;
 
     let userPrompt = '';
     const config: any = {
@@ -1023,17 +1272,40 @@ If there are any user hints/instructions provided, prioritize them!`;
     const isGroundingRequest = documentText.includes('[USE_AI_GROUNDING]');
 
     if (isGroundingRequest) {
-      userPrompt = `The website scraping was blocked. Use your Google Search tool to search for the following URL:
-"${sourceUrl}"
-After searching and retrieving the latest job/recruitment details for that specific post from the website, fulfill the system prompt instructions based on what you found.
+      userPrompt = `Website scrape nahi ho paayi. Google Search use karke independently research kar.
 
-IMPORTANT: You MUST return a valid JSON object only. Do NOT wrap the JSON in Markdown or backticks. Return raw JSON text.
+SOURCE URL (sirf identification ke liye): "${sourceUrl}"
 
-User Instructions/Hints:
-${userInstructions || 'None'}`;
+KAAM:
+1. URL se samajh ki kaunsi job hai — example: "indian-navy-ssc-officer-june-2027" = Indian Navy SSC Officer entry, June 2027 batch
+2. Google Search se official notification dhundh (.gov.in / .nic.in)
+3. Sab data verify kar — dates, fees, vacancies, eligibility
+4. 100% ORIGINAL post likh apne words mein
+5. SIRF .gov.in links daal — private website ka link BILKUL NAHI
+
+DISAMBIGUATION:
+- URL mein "navy" + "ssc" = Indian Navy Short Service Commission Officer (DEFENCE category, NOT Staff Selection Commission)
+- URL mein "ssc-cgl" ya "ssc-chsl" = Staff Selection Commission exam
+- Pura context dekh ke decide kar — sirf ek word pe mat ja
+
+OUTPUT: Valid JSON object. No markdown wrapping. No explanation. Only JSON.
+
+User Notes: ${userInstructions || 'None'}`;
       config.tools = [{ googleSearch: {} }];
     } else {
-      userPrompt = `Notification Text:\n${documentText}\n\nUser Instructions/Hints:\n${userInstructions || 'None'}`;
+      userPrompt = `Neeche scraped text hai ek recruitment website se. Isko SIRF reference ke liye use kar — identify kar ki kaunsi job hai.
+Phir apne knowledge se verify karke 100% ORIGINAL post likh.
+
+RULES:
+- Source text se KUCH COPY MAT KAR — na sentences, na table structure, na links
+- Apne words mein fresh content likh
+- SIRF .gov.in / .nic.in links include kar (private website ka link = "")
+- Category sahi detect kar: Navy/Army SSC Officer = "defence", SSC CGL/CHSL = "ssc"
+
+Scraped Reference:
+${documentText}
+
+User Notes: ${userInstructions || 'None'}`;
       config.responseMimeType = 'application/json';
     }
 
@@ -1048,48 +1320,236 @@ ${userInstructions || 'None'}`;
 
     const responseText = response.text || '';
     
-    // Safety check for JSON wrapper markdown
+    // Robust JSON extraction - handle cases where grounding adds extra text around JSON
     let cleanJsonString = responseText.trim();
     if (cleanJsonString.startsWith('```json')) {
-      cleanJsonString = cleanJsonString.replace(/^```json/, '').replace(/```$/, '').trim();
+      cleanJsonString = cleanJsonString.replace(/^```json\s*/, '').replace(/\s*```\s*$/, '').trim();
     } else if (cleanJsonString.startsWith('```')) {
-      cleanJsonString = cleanJsonString.replace(/^```/, '').replace(/```$/, '').trim();
+      cleanJsonString = cleanJsonString.replace(/^```\s*/, '').replace(/\s*```\s*$/, '').trim();
+    }
+    
+    // If grounding response has text before/after JSON, extract the JSON object
+    if (!cleanJsonString.startsWith('{')) {
+      const jsonStart = cleanJsonString.indexOf('{');
+      const jsonEnd = cleanJsonString.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        cleanJsonString = cleanJsonString.slice(jsonStart, jsonEnd + 1);
+      }
     }
 
     try {
       const parsedResult = JSON.parse(cleanJsonString);
 
-      // Perform URL processing & local re-hosting for unofficial notification links
-      let notificationLink = parsedResult.notification_link || '';
-      if (notificationLink && typeof notificationLink === 'string') {
-        notificationLink = notificationLink.trim();
-        
-        // Resolve relative URL using sourceUrl if present
-        if (!notificationLink.startsWith('http://') && !notificationLink.startsWith('https://') && sourceUrl) {
+      // ===== POST-GENERATION VALIDATION (like validatePost) =====
+      const today = new Date().toISOString().split('T')[0];
+
+      // Remove past dates
+      if (parsedResult.start_date && parsedResult.start_date < today) {
+        console.log(`[Validator] Removed past start_date: ${parsedResult.start_date}`);
+        parsedResult.start_date = null;
+      }
+      if (parsedResult.end_date && parsedResult.end_date < today) {
+        console.log(`[Validator] Removed past end_date: ${parsedResult.end_date}`);
+        parsedResult.end_date = null;
+      }
+
+      // Vacancy sanity check
+      if (parsedResult.vacancies && parsedResult.vacancies > 500000) {
+        console.log(`[Validator] Suspicious vacancy count: ${parsedResult.vacancies}. Flagging for review.`);
+        parsedResult.needs_review = true;
+        parsedResult.review_reason = `Vacancy count ${parsedResult.vacancies} seems too high — manual verification needed`;
+      }
+
+      // Ensure post_name is not "title" or placeholder
+      if (!parsedResult.post_name || parsedResult.post_name.toLowerCase() === 'title' || parsedResult.post_name.length < 3) {
+        if (sourceUrl) {
           try {
-            notificationLink = new URL(notificationLink, sourceUrl).toString();
-          } catch (e) {
-            console.error('[File Hoster] Failed to resolve relative notification_link:', notificationLink, 'with sourceUrl:', sourceUrl);
+            const paths = new URL(sourceUrl).pathname.split('/').filter((p: string) => p.length > 3 && !/^\d{4}$/.test(p));
+            if (paths.length > 0) {
+              parsedResult.post_name = paths[paths.length - 1]
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (c: string) => c.toUpperCase())
+                .replace(/\b(Online|Form|Apply|Recruitment|Result|Download)\b/gi, '')
+                .trim() || 'Various Posts';
+            }
+          } catch {}
+        }
+        if (!parsedResult.post_name || parsedResult.post_name.toLowerCase() === 'title') {
+          parsedResult.post_name = 'Various Posts';
+        }
+      }
+
+      // ===== AI OUTPUT VALIDATION: Detect & fix placeholder/garbage values =====
+      const placeholderPatterns = [
+        /^title$/i, /^post name$/i, /^job designation$/i, /^department name$/i,
+        /^\[.*\]$/, /^main headline/i, /^seo headline/i, /^official post/i,
+        /^actual seo/i, /^full department/i, /^advertisement/i
+      ];
+
+      const isPlaceholder = (val: string): boolean => {
+        if (!val || typeof val !== 'string') return false;
+        return placeholderPatterns.some(p => p.test(val.trim()));
+      };
+
+      // Fix title_en if it's a placeholder
+      if (isPlaceholder(parsedResult.title_en) || !parsedResult.title_en) {
+        if (parsedResult.department && parsedResult.post_name && !isPlaceholder(parsedResult.post_name)) {
+          parsedResult.title_en = `${parsedResult.department} ${parsedResult.post_name} Recruitment ${new Date().getFullYear()}`;
+        }
+      }
+
+      // Fix post_name if it's "Title" or a placeholder
+      if (isPlaceholder(parsedResult.post_name) || parsedResult.post_name?.toLowerCase() === 'title') {
+        // Try to extract from title_en
+        if (parsedResult.title_en && !isPlaceholder(parsedResult.title_en)) {
+          const titleWords = parsedResult.title_en.split(/[\s:|\-]+/).filter((w: string) =>
+            !['recruitment', 'online', 'form', 'apply', 'for', 'posts', 'vacancy', 'the', 'of'].includes(w.toLowerCase()) && w.length > 2
+          );
+          if (titleWords.length >= 2) {
+            parsedResult.post_name = titleWords.slice(0, 3).join(' ');
           }
         }
-
-        // Host files locally on our server
-        if (notificationLink.startsWith('http://') || notificationLink.startsWith('https://')) {
-          console.log(`[File Hoster] Notification link detected: "${notificationLink}". Downloading and hosting on our server...`);
-          const hostedUrl = await downloadAndHostFile(notificationLink);
-          
-          // Update the link to point to our newly hosted file
-          parsedResult.notification_link = hostedUrl;
-
-          // Also replace any occurrences of the original link within bilingual_html
-          if (parsedResult.bilingual_html && typeof parsedResult.bilingual_html === 'string') {
+        // If still placeholder, use a generic but specific extraction from URL
+        if (isPlaceholder(parsedResult.post_name) || parsedResult.post_name?.toLowerCase() === 'title') {
+          if (sourceUrl) {
             try {
-              const escapedOriginal = notificationLink.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-              const regex = new RegExp(escapedOriginal, 'g');
-              parsedResult.bilingual_html = parsedResult.bilingual_html.replace(regex, hostedUrl);
-            } catch (replErr) {
-              console.error('[File Hoster] Failed to replace original link in bilingual_html:', replErr);
+              const urlParts = new URL(sourceUrl).pathname.split('/').filter(p => p.length > 2);
+              if (urlParts.length > 0) {
+                parsedResult.post_name = urlParts[urlParts.length - 1]
+                  .replace(/-/g, ' ')
+                  .replace(/\b\w/g, (c: string) => c.toUpperCase())
+                  .replace(/\d{4}/g, '')
+                  .trim();
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // Fix department if placeholder
+      if (isPlaceholder(parsedResult.department) || !parsedResult.department) {
+        if (sourceUrl) {
+          try {
+            const host = new URL(sourceUrl).hostname.replace('www.', '').split('.')[0];
+            parsedResult.department = host.charAt(0).toUpperCase() + host.slice(1) + ' Recruitment';
+          } catch {}
+        }
+      }
+
+      // ===== CONTENT SANITIZATION: Remove ALL non-official links =====
+      const officialDomainPatterns = [
+        '.gov.in', '.nic.in', '.ac.in', '.res.in', '.mil.in', '.edu.in', '.org.in',
+        'nta.ac.in', 'ssc.gov.in', 'upsc.gov.in', 'ibps.in', 'rbi.org.in'
+      ];
+
+      // Known third-party domains to ALWAYS block
+      const blockedDomains = [
+        'sarkariresult.com', 'freejobalert.com', 'sarkariexam.com',
+        'sarkari-result.com', 'sarkarijobfind.com', 'naukrinama.com',
+        'govtjobsalert.com', 'rojgarresult.com', 'jobresult.in',
+        'sarkariyojana.com', 'bhartiboard.com', 'freshersworld.com',
+        'jagranjosh.com', 'careerindia.com', 'shiksha.com',
+        'example.com', 'placeholder.com'
+      ];
+
+      // Also block the source URL domain if provided
+      if (sourceUrl) {
+        try {
+          const srcHost = new URL(sourceUrl).hostname.replace('www.', '').toLowerCase();
+          if (!blockedDomains.includes(srcHost)) {
+            blockedDomains.push(srcHost);
+          }
+        } catch {}
+      }
+
+      const isOfficialLink = (url: string): boolean => {
+        if (!url || typeof url !== 'string' || url.trim() === '') return true; // empty is fine
+        try {
+          const hostname = new URL(url.trim()).hostname.toLowerCase();
+          // Check if it's a BLOCKED domain first
+          if (blockedDomains.some(blocked => hostname.includes(blocked))) {
+            return false;
+          }
+          // Check if it's an official domain
+          return officialDomainPatterns.some(pattern => hostname.endsWith(pattern) || hostname.includes(pattern));
+        } catch {
+          return false;
+        }
+      };
+
+      // Strip non-official links from all link fields
+      if (!isOfficialLink(parsedResult.apply_link)) {
+        console.log(`[Sanitizer] Removed non-official apply_link: ${parsedResult.apply_link}`);
+        parsedResult.apply_link = '';
+      }
+      if (!isOfficialLink(parsedResult.notification_link)) {
+        console.log(`[Sanitizer] Removed non-official notification_link: ${parsedResult.notification_link}`);
+        parsedResult.notification_link = '';
+      }
+      if (!isOfficialLink(parsedResult.official_website)) {
+        console.log(`[Sanitizer] Removed non-official official_website: ${parsedResult.official_website}`);
+        parsedResult.official_website = '';
+      }
+      if (!isOfficialLink(parsedResult.admit_card_link)) {
+        parsedResult.admit_card_link = '';
+      }
+      if (!isOfficialLink(parsedResult.result_link)) {
+        parsedResult.result_link = '';
+      }
+
+      // Strip non-official logo URL
+      if (parsedResult.official_logo_url && !isOfficialLink(parsedResult.official_logo_url)) {
+        parsedResult.official_logo_url = '';
+      }
+
+      // Sanitize bilingual_html: Remove any href links that are NOT official
+      if (parsedResult.bilingual_html && typeof parsedResult.bilingual_html === 'string') {
+        // Remove all anchor tags with non-official href
+        parsedResult.bilingual_html = parsedResult.bilingual_html.replace(
+          /<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+          (match: string, href: string, text: string) => {
+            if (isOfficialLink(href)) {
+              return match; // Keep official links
             }
+            return text; // Remove anchor tag but keep the text
+          }
+        );
+
+        // Remove ALL raw URLs from blocked domains (including source URL)
+        for (const blocked of blockedDomains) {
+          const escapedDomain = blocked.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          parsedResult.bilingual_html = parsedResult.bilingual_html.replace(
+            new RegExp(`https?://[^\\s"'<>]*${escapedDomain}[^\\s"'<>]*`, 'gi'),
+            ''
+          );
+        }
+
+        // Remove any remaining non-official URLs (catch-all)
+        parsedResult.bilingual_html = parsedResult.bilingual_html.replace(
+          /https?:\/\/[^\s"'<>]+/gi,
+          (url: string) => {
+            if (isOfficialLink(url)) return url;
+            if (url.startsWith('/uploads/')) return url; // local hosted files OK
+            return ''; // Remove everything else
+          }
+        );
+      }
+
+      // If notification_link is official, download and host locally
+      let notificationLink = parsedResult.notification_link || '';
+      if (notificationLink && notificationLink.startsWith('http') && isOfficialLink(notificationLink)) {
+        console.log(`[File Hoster] Official notification link detected: "${notificationLink}". Downloading and hosting locally...`);
+        const hostedUrl = await downloadAndHostFile(notificationLink);
+        const originalLink = notificationLink;
+        parsedResult.notification_link = hostedUrl;
+
+        // Replace in bilingual_html too
+        if (parsedResult.bilingual_html && typeof parsedResult.bilingual_html === 'string') {
+          try {
+            const escapedOriginal = originalLink.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            parsedResult.bilingual_html = parsedResult.bilingual_html.replace(new RegExp(escapedOriginal, 'g'), hostedUrl);
+          } catch (replErr) {
+            console.error('[File Hoster] Failed to replace link in bilingual_html:', replErr);
           }
         }
       }
@@ -1099,6 +1559,10 @@ ${userInstructions || 'None'}`;
       console.error('Failed to parse Gemini output as JSON:', responseText);
       console.warn('Falling back to robust heuristic engine.');
       const fallbackResult = fallbackBulletGenerator(documentText, userInstructions, sourceUrl);
+      // Apply same link sanitization to fallback
+      fallbackResult.apply_link = '';
+      fallbackResult.notification_link = '';
+      fallbackResult.official_website = '';
       res.json(fallbackResult);
     }
 
@@ -1107,6 +1571,10 @@ ${userInstructions || 'None'}`;
     console.warn('Falling back to robust heuristic engine.');
     try {
       const fallbackResult = fallbackBulletGenerator(documentText, userInstructions, sourceUrl);
+      // Apply same link sanitization to fallback
+      fallbackResult.apply_link = '';
+      fallbackResult.notification_link = '';
+      fallbackResult.official_website = '';
       res.json(fallbackResult);
     } catch (fallbackErr: any) {
       res.status(500).json({ error: `Fallback failed: ${fallbackErr.message}` });

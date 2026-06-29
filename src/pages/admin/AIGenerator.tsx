@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCategories, createPost } from '../../lib/supabase';
 import { Category, Post } from '../../lib/types';
+import { generatePostSlug, detectCategory } from '../../lib/postUtils';
 import { 
   Sparkles, Upload, FileText, CheckCircle2, RefreshCw, Eye, 
   ArrowRight, Info, Save, Trash2, FileCode, Check, AlertTriangle, 
@@ -185,14 +186,16 @@ export default function AIGenerator() {
   };
 
   const loadSelectedFile = (selectedFile: File) => {
-    const validExtensions = ['.pdf', '.docx'];
+    const validExtensions = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp'];
     const lowerName = selectedFile.name.toLowerCase();
     const isValid = validExtensions.some(ext => lowerName.endsWith(ext));
 
     if (!isValid) {
-      setError('Unsupported file type. Please upload a valid PDF or DOCX notification.');
+      setError('Unsupported file type. Upload PDF, DOCX, or Image (PNG/JPG/WEBP screenshot).');
       return;
     }
+
+    const isImage = ['.png', '.jpg', '.jpeg', '.webp'].some(ext => lowerName.endsWith(ext));
 
     setFile(selectedFile);
     setError(null);
@@ -203,18 +206,25 @@ export default function AIGenerator() {
     reader.onload = async () => {
       try {
         const base64String = (reader.result as string).split(',')[1];
-        setFileBase64(base64String);
 
-        // Send base64 to backend parser
-        const fileType = lowerName.endsWith('.pdf') ? 'pdf' : 'docx';
-        const res = await fetch('/api/parse-document', {
+        let endpoint = '/api/parse-document';
+        let body: any = {};
+
+        if (isImage) {
+          const mimeType = lowerName.endsWith('.png') ? 'image/png'
+            : lowerName.endsWith('.webp') ? 'image/webp'
+            : 'image/jpeg';
+          endpoint = '/api/parse-image';
+          body = { imageBase64: base64String, fileName: selectedFile.name, mimeType };
+        } else {
+          const fileType = lowerName.endsWith('.pdf') ? 'pdf' : 'docx';
+          body = { fileBase64: base64String, fileName: selectedFile.name, fileType };
+        }
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileBase64: base64String,
-            fileName: selectedFile.name,
-            fileType
-          })
+          body: JSON.stringify(body)
         });
 
         const data = await res.json();
@@ -224,8 +234,6 @@ export default function AIGenerator() {
 
         setParsedText(data.text || '');
         setSuccess(`Successfully parsed ${selectedFile.name}! Document source desk populated.`);
-        
-        // Auto-focus instructions
         setRightTab('source');
       } catch (err: any) {
         console.error(err);
@@ -288,13 +296,15 @@ export default function AIGenerator() {
 
   // Auto Generate Slug
   const handleGenerateSlug = () => {
-    if (!titleEn) return;
-    const formatted = titleEn
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-');
-    setSlug(formatted);
+    if (!titleEn && !postName) return;
+    const slug = generatePostSlug({
+      post_name: postName,
+      department: department,
+      title_en: titleEn,
+      advt_no: advtNo,
+      start_date: startDate,
+    });
+    setSlug(slug);
   };
 
   // Call Gemini to analyze parsed notification text
@@ -346,12 +356,27 @@ export default function AIGenerator() {
       setBilingualHtml(data.bilingual_html || '');
 
       // Autogenerate slug
-      const formattedSlug = (data.title_en || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-');
+      const formattedSlug = generatePostSlug({
+        post_name: data.post_name,
+        department: data.department,
+        title_en: data.title_en,
+        advt_no: data.advt_no,
+        start_date: data.start_date,
+      });
       setSlug(formattedSlug);
+
+      // Auto-detect category
+      const detectedCat = detectCategory(
+        { department: data.department, post_name: data.post_name, title_en: data.title_en, state: data.state },
+        categories
+      );
+      const aiSuggestedCat = data.suggested_category;
+      const finalCat = (aiSuggestedCat && categories.find(c => c.slug === aiSuggestedCat))
+        ? aiSuggestedCat
+        : detectedCat;
+      if (finalCat) {
+        setSelectedCategory(finalCat);
+      }
 
       setSuccess('Gemini AI successfully processed the notification! Scroll the center editor to inspect extracted results.');
       setRightTab('preview'); // Switch right panel to live render
@@ -587,15 +612,27 @@ export default function AIGenerator() {
         setBulkLogs(prev => [...prev, `   ↳ [Step 3] Storing styled job bulletin to database as draft...`]);
 
         // Auto format slug
-        const taskSlug = (genData.title_en || `bulk-draft-${Date.now()}-${i}`)
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .trim()
-          .replace(/\s+/g, '-');
+        const taskSlug = generatePostSlug({
+          post_name: genData.post_name,
+          department: genData.department,
+          title_en: genData.title_en,
+          advt_no: genData.advt_no,
+          start_date: genData.start_date,
+        });
+
+        // Auto-detect category for bulk items
+        const detectedBulkCat = detectCategory(
+          { department: genData.department, post_name: genData.post_name, title_en: genData.title_en, state: genData.state },
+          categories
+        );
+        const aiSuggestedBulkCat = genData.suggested_category;
+        const bulkCategorySlug = (aiSuggestedBulkCat && categories.find(c => c.slug === aiSuggestedBulkCat))
+          ? aiSuggestedBulkCat
+          : (detectedBulkCat || selectedCategory);
 
         const postData = {
-          category_id: categories.find(c => c.slug === selectedCategory)?.id,
-          category_slug: selectedCategory,
+          category_id: categories.find(c => c.slug === bulkCategorySlug)?.id,
+          category_slug: bulkCategorySlug,
           slug: taskSlug,
           title_en: genData.title_en || `Draft Bulletin from URL`,
           title_hi: genData.title_hi || '',
@@ -766,7 +803,7 @@ export default function AIGenerator() {
               {leftTabMode === 'file' ? (
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   <p className="text-[10px] text-slate-400 leading-normal">
-                    Upload official recruitment PDF or Word notification. The system will extract the raw text and parse it into structured databases.
+                    Upload official recruitment PDF, Word notification, or paste a Screenshot (PNG/JPG). The system will extract the raw text using AI Vision and parse it into structured databases.
                   </p>
 
                   {/* Upload Drop Zone */}
@@ -783,7 +820,7 @@ export default function AIGenerator() {
                       ref={fileInputRef} 
                       onChange={handleFileChange} 
                       className="hidden" 
-                      accept=".pdf,.docx" 
+                      accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" 
                     />
                     
                     {parsing ? (
@@ -799,7 +836,7 @@ export default function AIGenerator() {
                     </span>
                     
                     <span className="dropzone-sub text-[9px] text-slate-400 mt-1">
-                      {file ? file.name : 'Supports PDF & DOCX up to 10MB'}
+                      {file ? file.name : 'Supports PDF, DOCX & Screenshots (PNG/JPG/WEBP) up to 15MB'}
                     </span>
                   </div>
 

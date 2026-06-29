@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
 
 -- 2. Create Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
-    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     slug TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     title_hindi TEXT,
@@ -173,3 +173,41 @@ VALUES
   ('auto_share_telegram', 'false'),
   ('posts_per_page', '20')
 ON CONFLICT (key) DO NOTHING;
+
+-- 8. Create saved_jobs table (optional, for user feature)
+CREATE TABLE IF NOT EXISTS public.saved_jobs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL,
+    post_id TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(user_id, post_id)
+);
+
+ALTER TABLE public.saved_jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all access to saved_jobs for anon" ON public.saved_jobs
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to saved_jobs for authenticated" ON public.saved_jobs
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- 9. Create profiles table (optional, for user profiles)
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    dob TEXT,
+    qualification TEXT,
+    category TEXT,
+    state TEXT,
+    role TEXT DEFAULT 'user',
+    profile_completion_percentage INTEGER DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all access to profiles for anon" ON public.profiles
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to profiles for authenticated" ON public.profiles
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);

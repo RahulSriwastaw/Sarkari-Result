@@ -1,129 +1,103 @@
 import { Link } from 'react-router-dom';
-import { Award, Briefcase, ExternalLink, ShieldCheck, Mail, Radio } from 'lucide-react';
-import NewsletterSubscription from './NewsletterSubscription';
-import FAQ from './FAQ';
+import { Briefcase, ShieldCheck, Mail } from 'lucide-react';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 transition-colors duration-200 mt-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
-        
-        {/* Added FAQ and Newsletter to Footer */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 border-b border-slate-800 pb-12">
-          <div className="bg-slate-800/30 rounded-xl p-1">
-             <FAQ />
-          </div>
-          <div className="bg-slate-800/30 rounded-xl p-1">
-             <NewsletterSubscription />
-          </div>
-        </div>
+    <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 mt-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          
-          {/* Brand Column */}
-          <div className="md:col-span-1 space-y-4">
-            <Link to="/" className="flex items-center gap-2 group">
-              <span className="w-8 h-8 flex items-center justify-center bg-primary rounded-lg text-white font-bold text-lg shadow-md shadow-primary/20">
-                R
-              </span>
-              <div>
-                <span className="font-bold text-lg text-white">Result</span>
-                <span className="font-bold text-lg text-primary">Veda</span>
-              </div>
+        {/* Main Grid — 5 columns on desktop */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 pb-6 border-b border-slate-800">
+
+          {/* Brand */}
+          <div className="col-span-2 sm:col-span-3 lg:col-span-1 space-y-2">
+            <Link to="/" className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-primary rounded-lg text-white font-bold text-sm">R</span>
+              <span className="font-bold text-base text-white">Result<span className="text-primary">Veda</span></span>
             </Link>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              ResultVeda is India's premier portal for instant government job notification alerts. Providing comprehensive info on exam dates, admit cards, exam results, syllabi, and official keys, sabse pehle.
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              India's fastest government job alert portal — results, admit cards, vacancies & notifications sabse pehle.
             </p>
-            <div className="flex items-center gap-2 pt-2 text-xs">
-              <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
-              <span className="text-slate-400 font-semibold tracking-wide">Live Result Updates Running</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+              Live Updates Active
             </div>
           </div>
 
-          {/* Jobs Categories Column */}
+          {/* Jobs */}
           <div>
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-1.5">
-              <Briefcase className="w-4 h-4 text-primary" />
-              <span>Jobs Categories</span>
-            </h3>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <Link to="/category/ssc" className="hover:text-primary-hover transition-colors">SSC GD & CGL Exams</Link>
-              </li>
-              <li>
-                <Link to="/category/railway" className="hover:text-primary-hover transition-colors">Railway NTPC & RPF Jobs</Link>
-              </li>
-              <li>
-                <Link to="/category/banking" className="hover:text-primary-hover transition-colors">SBI & IBPS Bank Exams</Link>
-              </li>
-              <li>
-                <Link to="/category/upsc" className="hover:text-primary-hover transition-colors">UPSC Civil Services (IAS)</Link>
-              </li>
+            <h4 className="text-[11px] font-bold text-white uppercase tracking-wider mb-2">
+              <Briefcase className="w-3 h-3 text-primary inline mr-1" />Jobs
+            </h4>
+            <ul className="space-y-1.5 text-[11px]">
+              <li><Link to="/category/ssc" className="hover:text-primary transition-colors">SSC Exams</Link></li>
+              <li><Link to="/category/railway" className="hover:text-primary transition-colors">Railway Jobs</Link></li>
+              <li><Link to="/category/banking" className="hover:text-primary transition-colors">Bank Exams</Link></li>
+              <li><Link to="/category/upsc" className="hover:text-primary transition-colors">UPSC / IAS</Link></li>
+              <li><Link to="/category/state-psc" className="hover:text-primary transition-colors">State PSC</Link></li>
+              <li><Link to="/category/defence" className="hover:text-primary transition-colors">Defence Jobs</Link></li>
             </ul>
           </div>
 
-          {/* Portal Links Column */}
+          {/* Results & Cards */}
           <div>
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-primary" />
-              <span>Exam Corner</span>
-            </h3>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <Link to="/results" className="hover:text-primary-hover transition-colors">Latest Results</Link>
-              </li>
-              <li>
-                <Link to="/admit-card" className="hover:text-primary-hover transition-colors">Admit Cards Download</Link>
-              </li>
-              <li>
-                <Link to="/category/answer-key" className="hover:text-primary-hover transition-colors">Official Answer Keys</Link>
-              </li>
-              <li>
-                <Link to="/category/syllabus" className="hover:text-primary-hover transition-colors">Exams Syllabus Guides</Link>
-              </li>
+            <h4 className="text-[11px] font-bold text-white uppercase tracking-wider mb-2">Results</h4>
+            <ul className="space-y-1.5 text-[11px]">
+              <li><Link to="/results" className="hover:text-primary transition-colors">Latest Results</Link></li>
+              <li><Link to="/admit-card" className="hover:text-primary transition-colors">Admit Cards</Link></li>
+              <li><Link to="/category/answer-key" className="hover:text-primary transition-colors">Answer Keys</Link></li>
+              <li><Link to="/category/syllabus" className="hover:text-primary transition-colors">Syllabus</Link></li>
+              <li><Link to="/latest-jobs" className="hover:text-primary transition-colors">Latest Jobs</Link></li>
             </ul>
           </div>
 
-          {/* Disclaimer / Subscribe */}
-          <div className="space-y-4 text-xs text-slate-400">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-primary" />
-              <span>Subscribe & Disclaimer</span>
-            </h3>
-            
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); alert('Subscribed to job alerts!'); }}>
-              <input 
-                type="email" 
-                placeholder="Enter your email..." 
-                className="w-full bg-slate-800 border border-slate-700 text-white text-xs px-3 py-2 rounded focus:outline-none focus:border-primary"
+          {/* Quick Links */}
+          <div>
+            <h4 className="text-[11px] font-bold text-white uppercase tracking-wider mb-2">Links</h4>
+            <ul className="space-y-1.5 text-[11px]">
+              <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
+              <li><Link to="/contact" className="hover:text-primary transition-colors">Contact</Link></li>
+              <li><Link to="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
+              <li><Link to="/terms" className="hover:text-primary transition-colors">Terms of Use</Link></li>
+              <li><Link to="/veda-admin-6721" className="hover:text-primary transition-colors">Admin</Link></li>
+            </ul>
+          </div>
+
+          {/* Subscribe */}
+          <div>
+            <h4 className="text-[11px] font-bold text-white uppercase tracking-wider mb-2">Subscribe</h4>
+            <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); alert('Subscribed!'); }}>
+              <input
+                type="email"
+                placeholder="Your email..."
+                className="w-full bg-slate-800 border border-slate-700 text-white text-[11px] px-2.5 py-1.5 rounded focus:outline-none focus:border-primary"
                 required
               />
-              <button type="submit" className="bg-primary hover:bg-primary-hover text-white px-3 py-2 rounded font-bold transition-colors">
-                Subscribe
+              <button type="submit" className="w-full bg-primary hover:bg-primary-hover text-white text-[11px] px-2.5 py-1.5 rounded font-semibold transition-colors">
+                Get Job Alerts
               </button>
             </form>
-
-            <p className="leading-relaxed mt-2">
-              This is a private news alert cms application and is NOT affiliated with any government agency. Please verify with the official site before applying.
-            </p>
-            <div className="flex items-center gap-2 text-slate-300">
-              <Mail className="w-4 h-4 text-primary" />
-              <span>support@resultveda.com</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-2">
+              <Mail className="w-3 h-3 text-primary" />
+              support@resultveda.com
             </div>
           </div>
-
         </div>
 
-        <div className="border-t border-slate-800 mt-8 pt-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© {currentYear} ResultVeda. All rights reserved.</p>
-          <div className="flex gap-4">
-            <Link to="/veda-admin-6721" className="hover:text-primary transition-colors">Admin Panel</Link>
-            <Link to="/about" className="hover:text-primary transition-colors">About Us</Link>
-            <Link to="/terms" className="hover:text-primary transition-colors">Terms of Use</Link>
-            <Link to="/contact" className="hover:text-primary transition-colors">Contact Us</Link>
-          </div>
+        {/* Disclaimer — compact */}
+        <div className="py-4 border-b border-slate-800">
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            <ShieldCheck className="w-3 h-3 text-primary inline mr-1 -mt-0.5" />
+            <strong className="text-slate-400">Disclaimer:</strong> Content on ResultVeda.com is for informational purposes only and is not a legal or official document. We do not guarantee accuracy — verify from official government websites before acting. ResultVeda is not responsible for errors, omissions, or losses. <strong className="text-slate-400">ResultVeda™</strong> brand & content are protected under applicable IP laws. This website is <strong className="text-slate-400">NOT affiliated with any government body</strong>. All govt. names/logos belong to their respective owners.
+          </p>
+        </div>
+
+        {/* Copyright */}
+        <div className="pt-4 text-center text-[10px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p>© 2024-{currentYear} ResultVeda™ — All rights reserved.</p>
+          <p className="text-slate-600">Made with ❤️ in India</p>
         </div>
       </div>
     </footer>
