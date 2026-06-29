@@ -1488,7 +1488,15 @@ DATA REPEAT RULES (STRICT):
 - Application Fee — already form mein hai, bilingual_html mein dobara MAT LIKHO
 - Age Limit — already form mein hai, bilingual_html mein dobara MAT LIKHO
 - Title — already field mein hai, bilingual_html mein MAT LIKHO
-- SIRF woh data likho jo form fields mein NAHI hai: vacancy details, eligibility per post, how to apply, important links
+- SIRF woh data likho jo form fields mein NAHI hai: vacancy details, eligibility per post, how to apply, important links, FAQ
+
+FAQ SECTION RULES:
+- 5-8 FAQs generate karo jo is SPECIFIC post se related hon
+- Har FAQ ek real question ho jo student puchega (simple Hindi-English mix mein)
+- Examples: "Kya ITI pass apply kar sakta hai?", "Iska selection process kya hai?", "Kitni fees lagegi?", "Age limit mein relaxation milega kya OBC ko?"
+- Answers short aur to-the-point hon (2-3 lines max)
+- FAQ section mein HTML <details>/<summary> tags use karo (dropdown accordion style)
+- FAQs mein bhi SEO keywords naturally daal (ye Google Featured Snippet mein rank karte hain)
 
 HTML TEMPLATE:
 <div class="mb-3 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -1529,6 +1537,26 @@ HTML TEMPLATE:
         <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Official Website</td><td class="p-2 border border-slate-200 dark:border-slate-700"><a href="[.gov.in]" target="_blank" class="text-primary hover:underline">Visit</a></td></tr>
       </tbody>
     </table>
+  </div>
+</div>
+<div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
+  <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">❓ Frequently Asked Questions (FAQ)</h3>
+  <div class="space-y-2">
+    <details class="group border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+      <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center justify-between">
+        <span>[Question 1 — related to this specific post, e.g. "Is post ka last date kya hai?"]</span>
+        <span class="text-primary text-sm">+</span>
+      </summary>
+      <div class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900">[Answer — simple Hindi-English mix mein]</div>
+    </details>
+    <details class="group border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+      <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 flex items-center justify-between">
+        <span>[Question 2]</span>
+        <span class="text-primary text-sm">+</span>
+      </summary>
+      <div class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900">[Answer]</div>
+    </details>
+    [Generate 5-8 relevant FAQs total — cover: eligibility, age, fees, how to apply, selection process, documents needed, exam pattern, etc.]
   </div>
 </div>
 <div class="sr-only opacity-0 pointer-events-none select-none h-0 w-0 overflow-hidden absolute" aria-hidden="false">
