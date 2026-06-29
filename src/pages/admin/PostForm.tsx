@@ -924,12 +924,12 @@ export default function PostForm() {
                   <div>
                     <label className="label flex items-center justify-between">
                       <span>Source Text Extract Preview (Read-only)</span>
-                      <span className="text-[10px] font-mono text-slate-400">First 800 chars</span>
+                      <span className="text-[10px] font-mono text-slate-400">{aiExtractedText.length} chars total</span>
                     </label>
                     <textarea
                       readOnly
-                      value={aiExtractedText.slice(0, 800) + (aiExtractedText.length > 800 ? '...' : '')}
-                      rows={5}
+                      value={aiExtractedText}
+                      rows={8}
                       className="textarea font-mono text-[10px] bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 focus:border-slate-300 text-slate-500 cursor-not-allowed leading-relaxed"
                     />
                   </div>
