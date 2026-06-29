@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Menu, X, ShieldAlert, Globe, User, Languages } from 'lucide-react';
+import { Search, Menu, X, ShieldAlert, User, Languages } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import { useLanguage } from '../lib/LanguageContext';
 import { getCategories } from '../lib/supabase';
@@ -19,31 +19,7 @@ export default function Header() {
   useEffect(() => {
     getCategories().then(setCategories);
 
-    // Initialize Google Translate widget
-    const addGoogleTranslateScript = () => {
-      const scriptId = 'google-translate-script';
-      if (!document.getElementById(scriptId)) {
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.type = 'text/javascript';
-        script.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-        script.async = true;
-        document.body.appendChild(script);
-      }
 
-      (window as any).googleTranslateElementInit = () => {
-        new (window as any).google.translate.TranslateElement(
-          {
-            pageLanguage: 'en',
-            layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
-            autoDisplay: false
-          },
-          'google_translate_element'
-        );
-      };
-    };
-
-    addGoogleTranslateScript();
   }, []);
 
   // Close menus on navigation
@@ -143,12 +119,7 @@ export default function Header() {
             </button>
             <ThemeToggle />
             
-            {/* Google Translate Integration */}
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700/60 h-[30px]" title="Translate Website">
-              <Globe className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-              <div id="google_translate_element"></div>
-            </div>
-            
+
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 lg:hidden rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

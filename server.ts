@@ -384,17 +384,36 @@ function fallbackEligibilityGenerator(reqBody: any): any {
 
 // Download and host a file locally on our server to avoid watermark/copyright issues from other websites
 async function downloadAndHostFile(urlStr: string): Promise<string> {
+  const attemptDownload = async (url: string, useProxy = false): Promise<Response> => {
+    let finalUrl = url;
+    if (useProxy) {
+      // Use corsproxy.io as a simple proxy for binary files
+      finalUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    }
+
+    return await fetch(finalUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': new URL(url).origin + '/',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+      },
+      signal: AbortSignal.timeout(20000) // Increase timeout for slow gov servers
+    });
+  };
+
   try {
     console.log(`[File Hoster] Fetching file from: ${urlStr}`);
-    const response = await fetch(urlStr, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': new URL(urlStr).origin + '/',
-      }
-    });
+    let response = await attemptDownload(urlStr);
 
     if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
+      console.log(`[File Hoster] Direct download failed with status ${response.status}. Trying proxy...`);
+      response = await attemptDownload(urlStr, true);
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status} after proxy attempt`);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -594,7 +613,7 @@ app.post('/api/scrape-website', async (req, res) => {
         try {
           const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
           const response = await fetch(proxyUrl, {
-            signal: AbortSignal.timeout(8000)
+            signal: AbortSignal.timeout(15000)
           });
           if (response.ok) {
             const json = await response.json();
@@ -615,7 +634,7 @@ app.post('/api/scrape-website', async (req, res) => {
           try {
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
             const response = await fetch(proxyUrl, {
-              signal: AbortSignal.timeout(8000)
+              signal: AbortSignal.timeout(15000)
             });
             if (response.ok) {
               html = await response.text();
@@ -634,7 +653,7 @@ app.post('/api/scrape-website', async (req, res) => {
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
-                signal: AbortSignal.timeout(8000)
+                signal: AbortSignal.timeout(15000)
               });
               if (response.ok) {
                 html = await response.text();
@@ -644,8 +663,25 @@ app.post('/api/scrape-website', async (req, res) => {
                 throw new Error(`CorsProxy status ${response.status}`);
               }
             } catch (err4: any) {
-              console.log(`[Scraper] CorsProxy failed for ${targetUrl}: ${err4.message}.`);
-              usedFallback = true;
+              console.log(`[Scraper] CorsProxy failed for ${targetUrl}: ${err4.message}. Trying thingproxy...`);
+              
+              // Method 6: Thingproxy (last resort)
+              try {
+                const proxyUrl = `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(targetUrl)}`;
+                const response = await fetch(proxyUrl, {
+                  signal: AbortSignal.timeout(15000)
+                });
+                if (response.ok) {
+                   html = await response.text();
+                   scrapeMethod = 'thingproxy';
+                   console.log(`[Scraper] Fetch via Thingproxy succeeded for ${targetUrl}`);
+                } else {
+                   throw new Error(`Thingproxy status ${response.status}`);
+                }
+              } catch (err5: any) {
+                 console.log(`[Scraper] ALL methods failed for ${targetUrl}: ${err5.message}`);
+                 usedFallback = true;
+              }
             }
           }
         }
