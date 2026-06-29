@@ -681,29 +681,40 @@ app.post('/api/scrape-website', async (req, res) => {
           jinaText.trim().length < 200;
 
         if (!isBlockedContent && jinaText.trim().length > 200) {
-          scrapeMethod = 'jina-reader';
-          console.log(`[Scraper] Jina AI Reader succeeded for ${targetUrl} (${jinaText.length} chars)`);
+          // Check if Jina actually got the FULL content (tables, fees, dates)
+          // Sarkari job pages have specific keywords in complete content
+          const hasFullContent = jinaText.length > 2000 && (
+            (jinaText.includes('Application Fee') || jinaText.includes('application fee')) ||
+            (jinaText.includes('Age Limit') || jinaText.includes('age limit')) ||
+            (jinaText.includes('Important Date') || jinaText.includes('Last Date'))
+          );
 
-          // Jina returns clean markdown/text directly - no need for cheerio parsing
-          const pdfLinkMatches = jinaText.match(/https?:\/\/[^\s\)]+\.pdf[^\s\)]*/gi) || [];
-          const docLinks = jinaText.match(/https?:\/\/[^\s\)]+\.(docx?|pdf)[^\s\)]*/gi) || [];
-          const allDocLinks = [...new Set([...pdfLinkMatches, ...docLinks])];
+          if (hasFullContent) {
+            scrapeMethod = 'jina-reader';
+            console.log(`[Scraper] Jina AI Reader succeeded with FULL content for ${targetUrl} (${jinaText.length} chars)`);
 
-          let finalText = jinaText
-            .replace(/\r/g, '')
-            .replace(/[ \t]+/g, ' ')
-            .replace(/\n\s*\n\s*\n/g, '\n\n')
-            .trim();
+            const pdfLinkMatches = jinaText.match(/https?:\/\/[^\s\)]+\.pdf[^\s\)]*/gi) || [];
+            const docLinks = jinaText.match(/https?:\/\/[^\s\)]+\.(docx?|pdf)[^\s\)]*/gi) || [];
+            const allDocLinks = [...new Set([...pdfLinkMatches, ...docLinks])];
 
-          if (allDocLinks.length > 0) {
-            finalText += `\n\n[Extracted PDF and Advertisement Document Links from website]:\n` + allDocLinks.map(link => `- ${link}`).join('\n');
+            let finalText = jinaText
+              .replace(/\r/g, '')
+              .replace(/[ \t]+/g, ' ')
+              .replace(/\n\s*\n\s*\n/g, '\n\n')
+              .trim();
+
+            if (allDocLinks.length > 0) {
+              finalText += `\n\n[Extracted PDF and Advertisement Document Links from website]:\n` + allDocLinks.map(link => `- ${link}`).join('\n');
+            }
+
+            if (finalText.length > 40000) {
+              finalText = finalText.slice(0, 40000) + '\n\n[Content truncated due to size limits]';
+            }
+
+            return res.json({ text: finalText, method: scrapeMethod, isFallback: false });
+          } else {
+            console.log(`[Scraper] Jina returned partial content (${jinaText.length} chars, no tables/fees). Skipping to full HTML scraper.`);
           }
-
-          if (finalText.length > 40000) {
-            finalText = finalText.slice(0, 40000) + '\n\n[Content truncated due to size limits]';
-          }
-
-          return res.json({ text: finalText, method: scrapeMethod, isFallback: false });
         } else {
           console.log(`[Scraper] Jina returned blocked/protection page for ${targetUrl}. Skipping.`);
         }
