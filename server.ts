@@ -1034,9 +1034,10 @@ app.post('/api/scrape-website', async (req, res) => {
 
     const $ = cheerio.load(html);
 
-    // ===== STRUCTURED EXTRACTION (like Python BeautifulSoup approach) =====
+    // ===== FULL PAGE CLONE EXTRACTION (like Python pd.read_html + BeautifulSoup) =====
+    // This extracts EVERYTHING - all tables, all links, all text - nothing is missed
     
-    // Step 0: Extract ALL links FIRST (before modifying DOM)
+    // Step 0: Extract ALL links with actual URLs (before any DOM modification)
     const extractedLinks: Record<string, string> = {};
     const allPageLinks: Array<{text: string, url: string}> = [];
     
@@ -1049,7 +1050,6 @@ app.post('/api/scrape-website', async (req, res) => {
           allPageLinks.push({ text: linkText, url: absoluteUrl });
         } catch {}
       }
-      // Also check onclick for URLs
       const onclick = $(el).attr('onclick') || '';
       const onclickUrl = onclick.match(/https?:\/\/[^\s'"]+/);
       if (onclickUrl && linkText) {
@@ -1057,77 +1057,104 @@ app.post('/api/scrape-website', async (req, res) => {
       }
     });
 
-    // Also extract ALL URLs from the raw HTML (catches hidden/JS links)
+    // Scan raw HTML for .gov.in / .nic.in / .pdf URLs (catches hidden/JS links)
     const allHtmlUrls = html.match(/https?:\/\/[^\s"'<>]+/gi) || [];
     const govUrls = allHtmlUrls.filter(u => 
-      u.includes('.gov.in') || u.includes('.nic.in') || u.includes('.pdf')
+      (u.includes('.gov.in') || u.includes('.nic.in') || u.endsWith('.pdf')) &&
+      !u.includes('google') && !u.includes('facebook')
     );
-    // Add gov URLs that aren't already in allPageLinks
     govUrls.forEach(u => {
       if (!allPageLinks.some(l => l.url === u)) {
         allPageLinks.push({ text: 'Official Link', url: u });
       }
     });
 
-    // Extract useful links from the "Important Links" table specifically
+    // Step 1: Extract ALL tables as structured data (like pandas read_html)
+    const allTables: string[] = [];
     $('table').each((i, table) => {
       const tableTextLower = $(table).text().toLowerCase();
-      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here') || tableTextLower.includes('apply online') || tableTextLower.includes('notification')) {
+      
+      // Extract links from "Important Links" table
+      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || 
+          tableTextLower.includes('click here') || tableTextLower.includes('apply online')) {
         $(table).find('tr').each((j, tr) => {
           const cols = $(tr).find('td');
           if (cols.length >= 2) {
             const keyText = $(cols[0]).text().trim();
-            // Get the actual URL from anchor tag in 2nd column
-            const linkEl = $(cols[1]).find('a[href]');
             let linkUrl = '';
-            linkEl.each((k, a) => {
+            $(cols[1]).find('a[href]').each((k, a) => {
               const href = $(a).attr('href') || '';
               if (href && !href.startsWith('javascript:') && href.length > 5) {
                 try { 
                   const absUrl = new URL(href, targetUrl).toString();
-                  if (!linkUrl) linkUrl = absUrl;
-                  // Prefer .gov.in links
-                  if (absUrl.includes('.gov.in') || absUrl.includes('.nic.in')) {
+                  if (!linkUrl || absUrl.includes('.gov.in') || absUrl.includes('.nic.in')) {
                     linkUrl = absUrl;
                   }
                 } catch {}
               }
             });
-            const valText = $(cols[1]).text().trim();
-            if (keyText && keyText.length > 2 && (linkUrl || valText)) {
-              extractedLinks[keyText] = linkUrl || valText;
+            if (keyText && keyText.length > 2) {
+              extractedLinks[keyText] = linkUrl || $(cols[1]).text().trim();
             }
           }
         });
       }
+
+      // Extract EVERY table as formatted text (like pandas DataFrame display)
+      let tableStr = '';
+      const rows: string[][] = [];
+      $(table).find('tr').each((j, tr) => {
+        const cells: string[] = [];
+        $(tr).find('td, th').each((k, cell) => {
+          cells.push($(cell).text().trim().replace(/\s+/g, ' '));
+        });
+        if (cells.length > 0 && cells.some(c => c.length > 0)) {
+          rows.push(cells);
+        }
+      });
+
+      if (rows.length > 0) {
+        // Format as readable table with separators
+        const maxCols = Math.max(...rows.map(r => r.length));
+        const colWidths: number[] = Array(maxCols).fill(0);
+        rows.forEach(row => {
+          row.forEach((cell, ci) => {
+            colWidths[ci] = Math.max(colWidths[ci] || 0, Math.min(cell.length, 60));
+          });
+        });
+
+        rows.forEach((row, ri) => {
+          const formattedCells = row.map((cell, ci) => cell.slice(0, 80));
+          tableStr += formattedCells.join(' | ') + '\n';
+          if (ri === 0 && rows.length > 1) {
+            tableStr += '-'.repeat(Math.min(formattedCells.join(' | ').length, 120)) + '\n';
+          }
+        });
+
+        allTables.push(tableStr.trim());
+      }
     });
 
-    // If no explicit useful links were detected, derive important links from page anchors
-    if (Object.keys(extractedLinks).length === 0 || !extractedLinks['Apply Online'] || !extractedLinks['Official Website']) {
+    // Fallback: find important links from all page anchors
+    if (!extractedLinks['Apply Online'] || !extractedLinks['Official Website']) {
       for (const link of allPageLinks) {
-        const lowerText = link.text.toLowerCase();
-        const lowerUrl = link.url.toLowerCase();
-
-        if (!extractedLinks['Apply Online'] && /apply|registration|register|candidate.*login/i.test(lowerText + ' ' + lowerUrl)) {
+        const lt = link.text.toLowerCase();
+        const lu = link.url.toLowerCase();
+        if (!extractedLinks['Apply Online'] && /apply|registration|candidate.*login/i.test(lt + ' ' + lu)) {
           extractedLinks['Apply Online'] = link.url;
         }
-        if (!extractedLinks['Download Notification'] && /notification|advertisement|advt|circular|notice/i.test(lowerText + ' ' + lowerUrl)) {
-          extractedLinks['Download Notification'] = link.url;
-        }
-        if (!extractedLinks['Download Notification'] && lowerUrl.endsWith('.pdf')) {
+        if (!extractedLinks['Download Notification'] && (/notification|advt|circular/i.test(lt) || lu.endsWith('.pdf'))) {
           extractedLinks['Download Notification'] = link.url;
         }
         if (!extractedLinks['Official Website'] && isOfficialDomain(link.url)) {
           extractedLinks['Official Website'] = link.url;
         }
       }
-      // Also check govUrls directly from HTML
       if (!extractedLinks['Official Website'] && govUrls.length > 0) {
-        const officialSite = govUrls.find(u => !u.includes('.pdf') && !u.includes('/apply'));
-        if (officialSite) extractedLinks['Official Website'] = officialSite;
+        extractedLinks['Official Website'] = govUrls.find(u => !u.includes('.pdf')) || govUrls[0];
       }
       if (!extractedLinks['Apply Online'] && govUrls.length > 0) {
-        const applyUrl = govUrls.find(u => u.includes('apply') || u.includes('registration') || u.includes('candidate'));
+        const applyUrl = govUrls.find(u => u.includes('apply') || u.includes('registration'));
         if (applyUrl) extractedLinks['Apply Online'] = applyUrl;
       }
       if (!extractedLinks['Download Notification'] && govUrls.length > 0) {
@@ -1136,7 +1163,7 @@ app.post('/api/scrape-website', async (req, res) => {
       }
     }
 
-    // Step 1: NOW replace anchor tags with text+URL format for text extraction
+    // Step 2: Fix all links to absolute URLs (like Python urljoin) for text extraction
     $('a[href]').each((i, el) => {
       const linkText = $(el).text().trim();
       const linkUrl = $(el).attr('href') || '';
@@ -1150,125 +1177,11 @@ app.post('/api/scrape-website', async (req, res) => {
       }
     });
 
-    // Step 2: Extract structured data from tables
-    const structuredData: any = {
-      post_name: '',
-      important_dates: {} as Record<string, string>,
-      application_fee: {} as Record<string, string>,
-      age_limit: '',
-      vacancy_details: [] as string[],
-      useful_links: extractedLinks,
-      eligibility: '',
-      how_to_apply: '',
-    };
-
-    // Get post name from h1
-    const h1 = $('h1').first().text().trim();
-    if (h1) structuredData.post_name = h1;
-
-    // Collect ALL td text for regex (this gets ALL table cells from the ENTIRE page)
-    const allTdTexts: string[] = [];
-    $('td').each((i, el) => {
-      const cellText = $(el).text().trim();
-      if (cellText) allTdTexts.push(cellText);
-    });
-    const fullTableText = allTdTexts.join(' | ');
-
-    // Also collect ALL table rows as structured lines
-    const allTableRows: string[] = [];
-    $('tr').each((i, el) => {
-      const cells = $(el).find('td, th');
-      if (cells.length > 0) {
-        const rowText = cells.map((j, cell) => $(cell).text().trim()).get().join(' | ');
-        if (rowText.trim().length > 3) {
-          allTableRows.push(rowText);
-        }
-      }
-    });
-
-    // Extract dates using regex
-    const datePatterns: Record<string, RegExp> = {
-      'Application Begin': /Application Begin\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Last Date': /Last Date\s*(?:for\s*)?(?:Apply\s*Online|Fee\s*Payment)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Pay Exam Fee Last Date': /(?:Pay\s*Exam\s*Fee\s*Last\s*Date|Fee\s*Payment\s*Last\s*Date)\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Correction Date': /(?:Correction|Modification)\s*(?:Last\s*Date)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Exam Date': /Exam\s*Date\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Admit Card': /Admit\s*Card\s*(?:Available)?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-      'Result Date': /Result\s*(?:Declare)?\s*Date?\s*[:|]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-    };
-
-    for (const [key, pattern] of Object.entries(datePatterns)) {
-      const match = fullTableText.match(pattern);
-      if (match) structuredData.important_dates[key] = match[1];
-    }
-
-    // Extract fees using regex  
-    const feePatterns: Record<string, RegExp> = {
-      'General / OBC / EWS': /General\s*\/?\s*OBC\s*\/?\s*EWS\s*[:|]?\s*(\d+)\/?-?/i,
-      'SC / ST': /SC\s*\/?\s*ST\s*[:|]?\s*(\d+)\/?-?/i,
-      'All Category Female': /(?:All\s*Category\s*)?Female\s*[:|]?\s*(\d+)\/?-?/i,
-    };
-
-    for (const [key, pattern] of Object.entries(feePatterns)) {
-      const match = fullTableText.match(pattern);
-      if (match) structuredData.application_fee[key] = `₹${match[1]}/-`;
-    }
-
-    // Extract from tables — age, vacancy, links
-    $('table').each((i, table) => {
-      const tableText = $(table).text().replace(/\s+/g, ' ').trim();
-      const tableTextLower = tableText.toLowerCase();
-
-      // Age limit table
-      if (tableTextLower.includes('minimum age') || tableTextLower.includes('maximum age') || tableTextLower.includes('age limit')) {
-        if (!structuredData.age_limit) {
-          structuredData.age_limit = tableText.slice(0, 600);
-        }
-      }
-
-      // Vacancy details table
-      if ((tableTextLower.includes('vacancy') || tableTextLower.includes('post name')) && 
-          (tableTextLower.includes('total') || tableTextLower.includes('ur') || tableTextLower.includes('obc'))) {
-        $(table).find('tr').each((j, tr) => {
-          const rowText = $(tr).find('td, th').map((k, td) => $(td).text().trim()).get().join(' | ');
-          if (rowText && rowText.length > 5) {
-            structuredData.vacancy_details.push(rowText);
-          }
-        });
-      }
-
-      // Useful/Important links table — already extracted in Step 0, skip here
-
-      // Eligibility/Qualification
-      if (tableTextLower.includes('eligibility') || tableTextLower.includes('qualification') || tableTextLower.includes('education')) {
-        if (!structuredData.eligibility) {
-          structuredData.eligibility = tableText.slice(0, 1000);
-        }
-      }
-
-      // How to Apply section
-      if (tableTextLower.includes('how to fill') || tableTextLower.includes('how to apply')) {
-        if (!structuredData.how_to_apply) {
-          structuredData.how_to_apply = tableText.slice(0, 1000);
-        }
-      }
-    });
-
-    // Also extract "How to Apply" from non-table content (often in paragraphs/headings)
-    if (!structuredData.how_to_apply) {
-      const bodyText = $('body').text();
-      const howToMatch = bodyText.match(/How to (?:Fill|Apply)[^\n]*(?:\n[^\n]+){1,8}/i);
-      if (howToMatch) {
-        structuredData.how_to_apply = howToMatch[0].trim().slice(0, 1000);
-      }
-    }
-
-    // Step 3: Get full visible text — ONLY remove scripts/styles, keep ALL content elements
-    $('script, style, noscript, link[rel="stylesheet"], meta').remove();
+    // Step 3: Get FULL page text (remove only scripts/styles - keep EVERYTHING else)
+    $('script, style, noscript, link[rel="stylesheet"]').remove();
     
     let visibleText = '';
-    // Try to get main content area first (common selectors for post content)
-    const contentSelectors = ['#post', '.post', '.entry-content', '#content', 'article', '.post-content', 'main', '.main-content'];
+    const contentSelectors = ['#post', '.post', '.entry-content', '#content', 'article', 'main', '.main-content'];
     for (const selector of contentSelectors) {
       const contentEl = $(selector);
       if (contentEl.length > 0 && contentEl.text().trim().length > 500) {
@@ -1276,136 +1189,73 @@ app.post('/api/scrape-website', async (req, res) => {
         break;
       }
     }
-    
-    // Fallback: get entire body
     if (!visibleText || visibleText.length < 500) {
       visibleText = $('body').text() || $('html').text() || '';
     }
 
-    // Normalize spacing
     visibleText = visibleText
       .replace(/\r/g, '')
       .replace(/[ \t]+/g, ' ')
       .replace(/\n\s*\n\s*\n/g, '\n\n')
       .trim();
 
-    // Final check: if extracted text is too short or looks like a protection page
+    // Check for protection/error pages
     if (visibleText.length < 150 || 
-        (visibleText.toLowerCase().includes('403 error') && visibleText.length < 500) ||
-        (visibleText.toLowerCase().includes('access denied') && visibleText.length < 500)) {
-      console.log(`[Scraper] Extracted text too short or appears to be error page (${visibleText.length} chars). Switching to AI grounding.`);
+        (visibleText.toLowerCase().includes('403 error') && visibleText.length < 500)) {
       return res.json({
-        text: `[USE_AI_GROUNDING] The target website "${targetUrl}" was fetched but contained only a protection/error page with minimal content. The AI agent must use its native Google Search capability to search for the job recruitment details at this URL.`,
-        title: 'Insufficient content - AI will research via Google Search',
+        text: `[USE_AI_GROUNDING] The target website "${targetUrl}" returned minimal content.`,
+        title: 'Insufficient content',
         pageLinks: [], usefulLinks: {}, documentLinks: []
       });
     }
 
-    // Step 4: Build final structured output text for AI
-    let structuredOutput = '';
-
-    if (structuredData.post_name) {
-      structuredOutput += `POST NAME: ${structuredData.post_name}\n\n`;
-    }
-
-    if (Object.keys(structuredData.important_dates).length > 0) {
-      structuredOutput += `IMPORTANT DATES:\n`;
-      for (const [k, v] of Object.entries(structuredData.important_dates)) {
-        structuredOutput += `  ${k}: ${v}\n`;
-      }
-      structuredOutput += '\n';
-    }
-
-    if (Object.keys(structuredData.application_fee).length > 0) {
-      structuredOutput += `APPLICATION FEE:\n`;
-      for (const [k, v] of Object.entries(structuredData.application_fee)) {
-        structuredOutput += `  ${k}: ${v}\n`;
-      }
-      structuredOutput += '\n';
-    }
-
-    if (structuredData.age_limit) {
-      structuredOutput += `AGE LIMIT:\n  ${structuredData.age_limit}\n\n`;
-    }
-
-    if (structuredData.vacancy_details.length > 0) {
-      structuredOutput += `VACANCY DETAILS:\n`;
-      structuredData.vacancy_details.forEach((v: string) => {
-        structuredOutput += `  ${v}\n`;
-      });
-      structuredOutput += '\n';
-    }
-
-    if (structuredData.eligibility) {
-      structuredOutput += `ELIGIBILITY:\n  ${structuredData.eligibility}\n\n`;
-    }
-
-    if (Object.keys(structuredData.useful_links).length > 0) {
-      structuredOutput += `USEFUL IMPORTANT LINKS:\n`;
-      for (const [k, v] of Object.entries(structuredData.useful_links)) {
-        structuredOutput += `  ${k}: ${v}\n`;
-      }
-      structuredOutput += '\n';
-    } else if (allPageLinks.length > 0) {
-      // Fallback: list all significant page links
-      structuredOutput += `PAGE LINKS FOUND:\n`;
-      const significantLinks = allPageLinks.filter(l => 
-        l.url.includes('.gov.in') || l.url.includes('.nic.in') || 
-        l.url.includes('.pdf') || l.text.toLowerCase().includes('apply') ||
-        l.text.toLowerCase().includes('notification') || l.text.toLowerCase().includes('official')
-      );
-      (significantLinks.length > 0 ? significantLinks : allPageLinks.slice(0, 15)).forEach(l => {
-        structuredOutput += `  ${l.text}: ${l.url}\n`;
-      });
-      structuredOutput += '\n';
-    }
-
-    if (structuredData.how_to_apply) {
-      structuredOutput += `HOW TO APPLY:\n  ${structuredData.how_to_apply}\n\n`;
-    }
-
-    // Add all table rows as raw data (gives AI maximum context)
-    if (allTableRows.length > 0) {
-      structuredOutput += `ALL TABLE DATA (${allTableRows.length} rows):\n`;
-      allTableRows.forEach((row: string) => {
-        structuredOutput += `  ${row}\n`;
-      });
-      structuredOutput += '\n';
-    }
-
-    // Combine structured + full text
+    // Step 4: Build COMPLETE output — tables + text + links (nothing missed)
     let finalOutput = '';
-    if (structuredOutput.length > 100) {
-      finalOutput = `=== STRUCTURED DATA EXTRACTED ===\n${structuredOutput}\n=== FULL PAGE TEXT ===\n${visibleText}`;
-    } else {
-      finalOutput = visibleText;
+
+    // Post name / heading
+    const h1 = $('h1').first().text().trim() || '';
+    if (h1) finalOutput += `POST: ${h1}\n\n`;
+
+    // All tables (full clone data)
+    if (allTables.length > 0) {
+      finalOutput += `=== ALL TABLES DATA (${allTables.length} tables) ===\n\n`;
+      allTables.forEach((table, i) => {
+        finalOutput += `--- Table ${i + 1} ---\n${table}\n\n`;
+      });
     }
 
-    // Discover PDF links
-    const pdfLinks: string[] = [];
-    $('a[href]').each((i, el) => {
-      // Links already replaced with text, scan fullTableText for URLs
-    });
-    const urlsInText = finalOutput.match(/https?:\/\/[^\s\)\]]+\.(pdf|docx?)[^\s\)\]]*/gi) || [];
-    const uniquePdfLinks = [...new Set(urlsInText)];
-
-    if (uniquePdfLinks.length > 0) {
-      finalOutput += `\n\n[Extracted Document Links]:\n` + uniquePdfLinks.map(link => `- ${link}`).join('\n');
+    // Important links
+    if (Object.keys(extractedLinks).length > 0) {
+      finalOutput += `=== IMPORTANT LINKS ===\n`;
+      for (const [k, v] of Object.entries(extractedLinks)) {
+        finalOutput += `${k}: ${v}\n`;
+      }
+      finalOutput += '\n';
     }
 
-    // Limit text length
-    if (finalOutput.length > 40000) {
-      finalOutput = finalOutput.slice(0, 40000) + '\n\n[Content truncated]';
+    // Full page text
+    finalOutput += `=== FULL PAGE CONTENT ===\n${visibleText}\n`;
+
+    // PDF/Document links
+    const docUrls = finalOutput.match(/https?:\/\/[^\s\)\]]+\.(pdf|docx?)[^\s\)\]]*/gi) || [];
+    const uniqueDocLinks = [...new Set([...docUrls, ...govUrls.filter(u => u.includes('.pdf'))])];
+    if (uniqueDocLinks.length > 0) {
+      finalOutput += `\n=== DOCUMENT LINKS ===\n` + uniqueDocLinks.map(l => `- ${l}`).join('\n') + '\n';
     }
 
-    console.log(`[Scraper] Structured extraction complete. Structured: ${structuredOutput.length} chars, Total: ${finalOutput.length} chars`);
+    // Truncate if too long
+    if (finalOutput.length > 50000) {
+      finalOutput = finalOutput.slice(0, 50000) + '\n\n[Content truncated at 50k chars]';
+    }
+
+    console.log(`[Scraper] Full clone extraction: ${allTables.length} tables, ${allPageLinks.length} links, ${finalOutput.length} total chars`);
     res.json({ 
       text: finalOutput, 
       method: scrapeMethod, 
       isFallback: false, 
       pageLinks: allPageLinks,
       usefulLinks: extractedLinks,
-      documentLinks: uniquePdfLinks
+      documentLinks: uniqueDocLinks
     });
   } catch (err: any) {
     console.error('Error scraping website:', err);
