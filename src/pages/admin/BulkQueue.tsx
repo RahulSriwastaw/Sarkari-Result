@@ -8,7 +8,7 @@ import {
 interface QueueTask {
   id: string;
   url: string;
-  status: 'pending' | 'scraping' | 'generating' | 'saving' | 'completed' | 'failed';
+  status: 'pending' | 'scraping' | 'generating' | 'saving' | 'completed' | 'failed' | 'cancelled';
   error?: string;
   createdPostId?: string;
   createdPostTitle?: string;
@@ -34,10 +34,12 @@ interface QueueTask {
 interface QueueStatus {
   total: number;
   pending: number;
+  cancelled: number;
   processing: number;
   completed: number;
   failed: number;
   isProcessing: boolean;
+  isPaused: boolean;
   lastUpdated: string;
   tasks: QueueTask[];
 }
@@ -48,6 +50,9 @@ export default function BulkQueue() {
   const [instructions, setInstructions] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
+  const [isKilling, setIsKilling] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchStatus = async () => {
@@ -101,6 +106,46 @@ export default function BulkQueue() {
     fetchStatus();
   };
 
+  const handlePauseQueue = async () => {
+    setIsPausing(true);
+    try {
+      await fetch('/api/queue/pause', { method: 'POST' });
+      setMessage('Queue paused. Current task will stop after the current step.');
+      fetchStatus();
+    } catch (err: any) {
+      setMessage(`❌ Failed to pause: ${err.message}`);
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
+  const handleResumeQueue = async () => {
+    setIsResuming(true);
+    try {
+      await fetch('/api/queue/resume', { method: 'POST' });
+      setMessage('Queue resumed. Pending tasks will be processed again.');
+      fetchStatus();
+    } catch (err: any) {
+      setMessage(`❌ Failed to resume: ${err.message}`);
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
+  const handleKillQueue = async () => {
+    setIsKilling(true);
+    try {
+      const res = await fetch('/api/queue/kill', { method: 'POST' });
+      const data = await res.json();
+      setMessage(`✅ Killed queue and cleared ${data.cancelled} pending tasks.`);
+      fetchStatus();
+    } catch (err: any) {
+      setMessage(`❌ Failed to kill queue: ${err.message}`);
+    } finally {
+      setIsKilling(false);
+    }
+  };
+
   const getStatusIcon = (s: string) => {
     switch (s) {
       case 'pending': return <Clock className="w-3.5 h-3.5 text-slate-400" />;
@@ -109,6 +154,7 @@ export default function BulkQueue() {
       case 'saving': return <Loader2 className="w-3.5 h-3.5 text-purple-500 animate-spin" />;
       case 'completed': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
       case 'failed': return <XCircle className="w-3.5 h-3.5 text-red-500" />;
+      case 'cancelled': return <XCircle className="w-3.5 h-3.5 text-amber-500" />;
       default: return <Clock className="w-3.5 h-3.5 text-slate-400" />;
     }
   };
@@ -121,6 +167,7 @@ export default function BulkQueue() {
       case 'saving': return 'Saving...';
       case 'completed': return 'Done';
       case 'failed': return 'Failed';
+      case 'cancelled': return 'Cancelled';
       default: return s;
     }
   };
@@ -162,6 +209,10 @@ export default function BulkQueue() {
             <div className="text-[10px] text-slate-500 uppercase font-semibold">Active</div>
           </div>
           <div className="card p-3 text-center">
+            <div className="text-2xl font-bold text-amber-600">{status.cancelled}</div>
+            <div className="text-[10px] text-slate-500 uppercase font-semibold">Cancelled</div>
+          </div>
+          <div className="card p-3 text-center">
             <div className="text-2xl font-bold text-emerald-600">{status.completed}</div>
             <div className="text-[10px] text-slate-500 uppercase font-semibold">Done</div>
           </div>
@@ -192,7 +243,7 @@ export default function BulkQueue() {
           placeholder="Optional instructions for AI (e.g., 'Focus on eligibility details')"
           className="input text-xs"
         />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={handleAddUrls} disabled={loading || !urlsInput.trim()} className="btn btn-primary text-xs flex items-center gap-1.5">
             <Play className="w-3.5 h-3.5" />
             {loading ? 'Adding...' : 'Add & Start Processing'}
@@ -201,9 +252,22 @@ export default function BulkQueue() {
             <Trash2 className="w-3.5 h-3.5" />
             Clear Done
           </button>
+          <button onClick={() => handleClear('cancelled')} className="btn btn-secondary text-xs flex items-center gap-1.5">
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear Cancelled
+          </button>
           <button onClick={handleRetryFailed} className="btn btn-secondary text-xs flex items-center gap-1.5">
             <RotateCcw className="w-3.5 h-3.5" />
             Retry Failed
+          </button>
+          <button onClick={handlePauseQueue} disabled={status?.isPaused || isPausing} className="btn btn-warning text-xs flex items-center gap-1.5">
+            ⏸ Pause
+          </button>
+          <button onClick={handleResumeQueue} disabled={!status?.isPaused || isResuming} className="btn btn-success text-xs flex items-center gap-1.5">
+            ▶ Resume
+          </button>
+          <button onClick={handleKillQueue} disabled={isKilling} className="btn btn-error text-xs flex items-center gap-1.5">
+            ✖ Kill
           </button>
         </div>
         {message && <p className="text-xs font-semibold text-emerald-600">{message}</p>}

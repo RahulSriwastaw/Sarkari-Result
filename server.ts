@@ -2177,7 +2177,7 @@ app.get('/sitemap-news.xml', (req, res) => {
 interface QueueTask {
   id: string;
   url: string;
-  status: 'pending' | 'scraping' | 'generating' | 'saving' | 'completed' | 'failed';
+  status: 'pending' | 'scraping' | 'generating' | 'saving' | 'completed' | 'failed' | 'cancelled';
   error?: string;
   createdPostId?: string;
   createdPostTitle?: string;
@@ -2204,6 +2204,7 @@ interface QueueTask {
 interface QueueState {
   tasks: QueueTask[];
   isProcessing: boolean;
+  isPaused: boolean;
   lastUpdated: string;
 }
 
@@ -2216,7 +2217,7 @@ function loadQueue(): QueueState {
       return JSON.parse(data);
     }
   } catch (e) {}
-  return { tasks: [], isProcessing: false, lastUpdated: new Date().toISOString() };
+  return { tasks: [], isProcessing: false, isPaused: false, lastUpdated: new Date().toISOString() };
 }
 
 function saveQueue(state: QueueState) {
@@ -2225,6 +2226,20 @@ function saveQueue(state: QueueState) {
 }
 
 let queueProcessing = false;
+
+function cancelPendingTasks(state: QueueState) {
+  let cancelled = 0;
+  state.tasks.forEach(task => {
+    if (task.status === 'pending') {
+      task.status = 'cancelled';
+      task.currentStep = 'Cancelled';
+      task.error = undefined;
+      task.updatedAt = new Date().toISOString();
+      cancelled += 1;
+    }
+  });
+  return cancelled;
+}
 
 // Process a single URL task
 async function processQueueTask(task: QueueTask, instructions: string = '') {
@@ -2409,6 +2424,13 @@ async function processQueue() {
   queueProcessing = true;
 
   const state = loadQueue();
+  if (state.isPaused) {
+    queueProcessing = false;
+    state.isProcessing = false;
+    saveQueue(state);
+    return;
+  }
+
   const pendingTasks = state.tasks.filter(t => t.status === 'pending');
 
   if (pendingTasks.length === 0) {
@@ -2422,6 +2444,10 @@ async function processQueue() {
   saveQueue(state);
 
   for (const task of pendingTasks) {
+    const currentState = loadQueue();
+    if (currentState.isPaused) break;
+    if (currentState.tasks.every(t => t.status !== 'pending')) break;
+
     await processQueueTask(task, task.instructions || '');
     // Small delay between tasks to avoid rate limiting
     await new Promise(r => setTimeout(r, 3000));
@@ -2473,10 +2499,12 @@ app.get('/api/queue/status', (req, res) => {
   const summary = {
     total: state.tasks.length,
     pending: state.tasks.filter(t => t.status === 'pending').length,
+    cancelled: state.tasks.filter(t => t.status === 'cancelled').length,
     processing: state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status)).length,
     completed: state.tasks.filter(t => t.status === 'completed').length,
     failed: state.tasks.filter(t => t.status === 'failed').length,
     isProcessing: state.isProcessing || queueProcessing,
+    isPaused: state.isPaused,
     lastUpdated: state.lastUpdated,
   };
   res.json({ ...summary, tasks: state.tasks.slice(-50) }); // Last 50 tasks
@@ -2484,7 +2512,7 @@ app.get('/api/queue/status', (req, res) => {
 
 // API: Clear completed/failed tasks
 app.post('/api/queue/clear', (req, res) => {
-  const { clearType } = req.body; // 'completed', 'failed', 'all'
+  const { clearType } = req.body; // 'completed', 'failed', 'all', 'pending', 'cancelled'
   const state = loadQueue();
   
   if (clearType === 'all') {
@@ -2493,10 +2521,39 @@ app.post('/api/queue/clear', (req, res) => {
     state.tasks = state.tasks.filter(t => t.status !== 'completed');
   } else if (clearType === 'failed') {
     state.tasks = state.tasks.filter(t => t.status !== 'failed');
+  } else if (clearType === 'pending') {
+    state.tasks = state.tasks.filter(t => t.status !== 'pending');
+  } else if (clearType === 'cancelled') {
+    state.tasks = state.tasks.filter(t => t.status !== 'cancelled');
   }
   
   saveQueue(state);
   res.json({ success: true, remaining: state.tasks.length });
+});
+
+app.post('/api/queue/pause', (req, res) => {
+  const state = loadQueue();
+  state.isPaused = true;
+  state.isProcessing = false;
+  saveQueue(state);
+  res.json({ success: true, paused: true });
+});
+
+app.post('/api/queue/resume', (req, res) => {
+  const state = loadQueue();
+  state.isPaused = false;
+  saveQueue(state);
+  setTimeout(() => processQueue(), 500);
+  res.json({ success: true, paused: false });
+});
+
+app.post('/api/queue/kill', (req, res) => {
+  const state = loadQueue();
+  const cancelled = cancelPendingTasks(state);
+  state.isPaused = true;
+  state.isProcessing = false;
+  saveQueue(state);
+  res.json({ success: true, cancelled });
 });
 
 // API: Retry failed tasks
@@ -2523,6 +2580,11 @@ app.post('/api/queue/retry-failed', (req, res) => {
 // On server start, resume any pending tasks from last session
 function resumeQueueOnStartup() {
   const state = loadQueue();
+  if (state.isPaused) {
+    console.log('[Queue] Queue is paused on startup. Not auto-resuming.');
+    return;
+  }
+
   const pending = state.tasks.filter(t => t.status === 'pending');
   const stuck = state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status));
   
