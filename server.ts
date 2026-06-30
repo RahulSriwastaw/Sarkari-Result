@@ -763,6 +763,16 @@ app.post('/api/scrape-website', async (req, res) => {
           );
 
           if (hasFullContent) {
+            // Check if Jina actually preserved URLs (it often strips href from anchors)
+            const hasActualUrls = jinaText.includes('https://') && 
+              (jinaText.includes('.gov.in') || jinaText.includes('.nic.in') || jinaText.match(/https?:\/\/[^\s]+/g)?.length! > 3);
+            
+            if (!hasActualUrls) {
+              // Jina has text content but NO URLs — skip to HTML scraper which preserves <a href>
+              console.log(`[Scraper] Jina has content but NO URLs preserved. Skipping to HTML scraper for full link extraction.`);
+              throw new Error('Jina stripped URLs - need HTML scraper');
+            }
+
             scrapeMethod = 'jina-reader';
             console.log(`[Scraper] Jina AI Reader succeeded with FULL content for ${targetUrl} (${jinaText.length} chars)`);
 
