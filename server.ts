@@ -784,7 +784,51 @@ app.post('/api/scrape-website', async (req, res) => {
               finalText = finalText.slice(0, 40000) + '\n\n[Content truncated due to size limits]';
             }
 
-            return res.json({ text: finalText, method: scrapeMethod, isFallback: false });
+            // Extract links from Jina markdown text (format: [text](url) or bare URLs)
+            const jinaPageLinks: Array<{text: string, url: string}> = [];
+            const jinaUsefulLinks: Record<string, string> = {};
+            
+            // Extract markdown links [text](url)
+            const mdLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/gi;
+            let mdMatch;
+            while ((mdMatch = mdLinkPattern.exec(jinaText)) !== null) {
+              jinaPageLinks.push({ text: mdMatch[1], url: mdMatch[2] });
+            }
+            
+            // Extract bare URLs with preceding text
+            const urlPattern = /(?:([A-Za-z][A-Za-z\s]{2,30})\s*[:\-–]?\s*)?(https?:\/\/[^\s\)\]<>]+)/gi;
+            let urlMatch;
+            while ((urlMatch = urlPattern.exec(jinaText)) !== null) {
+              const label = urlMatch[1]?.trim() || '';
+              const url = urlMatch[2];
+              if (!jinaPageLinks.some(l => l.url === url)) {
+                jinaPageLinks.push({ text: label || url, url });
+              }
+            }
+
+            // Categorize important links
+            for (const link of jinaPageLinks) {
+              const textLower = (link.text || '').toLowerCase();
+              const urlLower = link.url.toLowerCase();
+              if (textLower.includes('apply online') || textLower.includes('apply here') || textLower.includes('registration')) {
+                jinaUsefulLinks['Apply Online'] = link.url;
+              } else if (textLower.includes('notification') || textLower.includes('advertisement') || urlLower.includes('.pdf')) {
+                jinaUsefulLinks['Download Notification'] = link.url;
+              } else if (urlLower.includes('.gov.in') || urlLower.includes('.nic.in')) {
+                if (!jinaUsefulLinks['Official Website']) {
+                  jinaUsefulLinks['Official Website'] = link.url;
+                }
+              }
+            }
+
+            return res.json({ 
+              text: finalText, 
+              method: scrapeMethod, 
+              isFallback: false,
+              pageLinks: jinaPageLinks,
+              usefulLinks: jinaUsefulLinks,
+              documentLinks: allDocLinks
+            });
           } else {
             console.log(`[Scraper] Jina returned partial content (${jinaText.length} chars, no tables/fees). Skipping to full HTML scraper.`);
           }
@@ -963,7 +1007,8 @@ app.post('/api/scrape-website', async (req, res) => {
       // that tells the downstream AI endpoints to use Google Search Grounding to fetch the content.
       return res.json({ 
         text: `[USE_AI_GROUNDING] The target website could not be scraped directly due to security protections (CloudFront/Cloudflare). The AI agent must use its native Google Search capability to search for "${targetUrl}" and extract the job recruitment details directly from the web.`,
-        title: 'Content protected - AI will search instead'
+        title: 'Content protected - AI will search instead',
+        pageLinks: [], usefulLinks: {}, documentLinks: []
       });
     }
 
@@ -982,7 +1027,8 @@ app.post('/api/scrape-website', async (req, res) => {
       console.log(`[Scraper] Detected bot-protection page for ${targetUrl}. Switching to AI grounding.`);
       return res.json({
         text: `[USE_AI_GROUNDING] The target website "${targetUrl}" returned a bot-protection page (Cloudflare/CloudFront 403). Direct scraping is blocked. The AI agent must use its native Google Search capability to research this URL and extract the full recruitment details from cached/indexed web pages.`,
-        title: 'Bot protection detected - AI will research via Google Search'
+        title: 'Bot protection detected - AI will research via Google Search',
+        pageLinks: [], usefulLinks: {}, documentLinks: []
       });
     }
 
@@ -1209,7 +1255,8 @@ app.post('/api/scrape-website', async (req, res) => {
       console.log(`[Scraper] Extracted text too short or appears to be error page (${visibleText.length} chars). Switching to AI grounding.`);
       return res.json({
         text: `[USE_AI_GROUNDING] The target website "${targetUrl}" was fetched but contained only a protection/error page with minimal content. The AI agent must use its native Google Search capability to search for the job recruitment details at this URL.`,
-        title: 'Insufficient content - AI will research via Google Search'
+        title: 'Insufficient content - AI will research via Google Search',
+        pageLinks: [], usefulLinks: {}, documentLinks: []
       });
     }
 
