@@ -74,9 +74,8 @@ export default function App() {
         <Route path="/profile" element={<UserProfilePage />} />
         <Route path="/expected-salary-calculator" element={<SalaryCalculatorPage />} />
         
-        {/* Redirects for common admin paths */}
-        <Route path="/admin" element={<Navigate to="/veda-admin-6721" replace />} />
-        <Route path="/login" element={<Navigate to="/veda-admin-6721/login" replace />} />
+        {/* Admin redirects removed for security */}
+        <Route path="/login" element={<Navigate to="/" replace />} />
         
         {/* Dynamic SEO Routes */}
         {seoRoutes.map(path => (

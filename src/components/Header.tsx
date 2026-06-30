@@ -85,10 +85,6 @@ export default function Header() {
             <Link to="/expected-salary-calculator" className={`px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors ${location.pathname === '/expected-salary-calculator' ? 'text-primary bg-primary/10' : 'text-slate-600 dark:text-slate-300 hover:text-primary'}`}>
               Salary Calc
             </Link>
-            <Link to="/veda-admin-6721" className="px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-primary transition-colors flex items-center gap-1">
-              <ShieldAlert className="w-3 h-3" />
-              <span>Admin</span>
-            </Link>
           </nav>
 
           {/* Right: Actions */}
@@ -185,10 +181,6 @@ export default function Header() {
               </Link>
               <Link to="/expected-salary-calculator" className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg">
                 Salary Calculator
-              </Link>
-              <Link to="/veda-admin-6721" className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg">
-                <ShieldAlert className="w-4 h-4" />
-                <span>Admin Panel</span>
               </Link>
             </div>
             

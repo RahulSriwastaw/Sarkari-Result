@@ -61,7 +61,6 @@ export default function Footer() {
               <li><Link to="/contact" className="hover:text-primary transition-colors">Contact</Link></li>
               <li><Link to="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
               <li><Link to="/terms" className="hover:text-primary transition-colors">Terms of Use</Link></li>
-              <li><Link to="/veda-admin-6721" className="hover:text-primary transition-colors">Admin</Link></li>
             </ul>
           </div>
 

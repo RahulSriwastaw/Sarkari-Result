@@ -255,8 +255,7 @@ export default function Homepage() {
         <div className="text-center py-16 card max-w-md mx-auto space-y-3">
           <p className="text-2xl">🔍</p>
           <h3 className="font-bold text-slate-800 dark:text-white">No job postings found</h3>
-          <p className="text-xs text-slate-500">Log into the Admin Panel at the top right to create your first manual job post!</p>
-          <Link to="/admin" className="btn btn-primary btn-sm">Go to Admin Login</Link>
+          <p className="text-xs text-slate-500">Check back soon for the latest government job notifications!</p>
         </div>
       ) : (
         <div className="space-y-8">
