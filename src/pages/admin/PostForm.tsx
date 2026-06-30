@@ -199,6 +199,34 @@ export default function PostForm() {
       }
 
       setAiExtractedText(data.text || '');
+      if (data) {
+        const usefulLinks: string[] = [];
+        const extractedLinks = data.usefulLinks || {};
+        Object.values(extractedLinks).forEach((link: any) => {
+          if (link && typeof link === 'string') usefulLinks.push(link);
+        });
+        if (Array.isArray(data.pageLinks)) {
+          data.pageLinks.forEach((link: any) => {
+            if (link?.url) usefulLinks.push(link.url);
+          });
+        }
+        if (Array.isArray(data.documentLinks)) {
+          data.documentLinks.forEach((link: any) => {
+            if (link && typeof link === 'string') usefulLinks.push(link);
+          });
+        }
+
+        const filteredLinks = [...new Set(usefulLinks)];
+        const findByPattern = (pattern: RegExp) => filteredLinks.find((link) => pattern.test(link.toLowerCase()));
+
+        const applyCandidate = extractedLinks['Apply Online'] || findByPattern(/apply|registration|register|form|submit|candidate/);
+        const notificationCandidate = extractedLinks['Download Notification'] || findByPattern(/notification|advertisement|advt|pdf|circular|notice|download/);
+        const officialCandidate = extractedLinks['Official Website'] || findByPattern(/\.gov\.in|\.nic\.in|\.gov|\.nic|\.edu\.in|\.org\.in|\.res\.in|\.ac\.in/);
+
+        if (applyCandidate) setApplyLink(applyCandidate);
+        if (notificationCandidate) setNotificationLink(notificationCandidate);
+        if (officialCandidate) setOfficialWebsite(officialCandidate);
+      }
       setAiSuccessMessage('Successfully scraped website content! Scroll down to review and run Gemini AI.');
     } catch (err: any) {
       console.error(err);
@@ -236,6 +264,34 @@ export default function PostForm() {
 
       const text = scrapeData.text || '';
       setAiExtractedText(text);
+      if (scrapeData) {
+        const usefulLinks: string[] = [];
+        const extractedLinks = scrapeData.usefulLinks || {};
+        Object.values(extractedLinks).forEach((link: any) => {
+          if (link && typeof link === 'string') usefulLinks.push(link);
+        });
+        if (Array.isArray(scrapeData.pageLinks)) {
+          scrapeData.pageLinks.forEach((link: any) => {
+            if (link?.url) usefulLinks.push(link.url);
+          });
+        }
+        if (Array.isArray(scrapeData.documentLinks)) {
+          scrapeData.documentLinks.forEach((link: any) => {
+            if (link && typeof link === 'string') usefulLinks.push(link);
+          });
+        }
+
+        const filteredLinks = [...new Set(usefulLinks)];
+        const findByPattern = (pattern: RegExp) => filteredLinks.find((link) => pattern.test(link.toLowerCase()));
+
+        const applyCandidate = extractedLinks['Apply Online'] || findByPattern(/apply|registration|register|form|submit|candidate/);
+        const notificationCandidate = extractedLinks['Download Notification'] || findByPattern(/notification|advertisement|advt|pdf|circular|notice|download/);
+        const officialCandidate = extractedLinks['Official Website'] || findByPattern(/\.gov\.in|\.nic\.in|\.gov|\.nic|\.edu\.in|\.org\.in|\.res\.in|\.ac\.in/);
+
+        if (applyCandidate) setApplyLink(applyCandidate);
+        if (notificationCandidate) setNotificationLink(notificationCandidate);
+        if (officialCandidate) setOfficialWebsite(officialCandidate);
+      }
 
       if (!text || text.trim().length === 0) {
         throw new Error('No readable text content could be extracted from this job portal website.');

@@ -132,6 +132,54 @@ function isOfficialDomain(urlStr: string): boolean {
   }
 }
 
+function extractUrlsFromText(text: string): string[] {
+  const urls = new Set<string>();
+  const regex = /https?:\/\/[^\s"'<>]+/gi;
+  const matches = text.match(regex) || [];
+  for (let url of matches) {
+    url = url.replace(/[),\.\]\?!;]+$/g, '');
+    if (url) urls.add(url);
+  }
+  return [...urls];
+}
+
+function isPdfOrDocumentLink(url: string): boolean {
+  return /\.(pdf|docx?|xlsx?|pptx?)(\?|#|$)/i.test(url);
+}
+
+function chooseLink(urls: string[], predicate: (url: string) => boolean): string | null {
+  return urls.find(url => predicate(url)) || null;
+}
+
+function findApplyLink(urls: string[], sourceUrl?: string): string | null {
+  const lowerUrls = urls.map(url => url.toLowerCase());
+  const applyCandidates = lowerUrls.filter(url => /apply|register|registration|online|candidate|login|form|submit/i.test(url));
+  const officialApply = applyCandidates.find(url => isOfficialDomain(url));
+  if (officialApply) return officialApply;
+  const firstOfficial = urls.find(url => isOfficialDomain(url));
+  if (firstOfficial) return firstOfficial;
+  if (sourceUrl && isOfficialDomain(sourceUrl)) return sourceUrl;
+  return null;
+}
+
+function findNotificationLink(urls: string[]): string | null {
+  const pdfFirst = urls.find(url => isPdfOrDocumentLink(url));
+  if (pdfFirst) return pdfFirst;
+  const notifCandidate = urls.find(url => /notification|advertisement|advt|circular|notice|pdf/i.test(url));
+  return notifCandidate || null;
+}
+
+function findOfficialWebsite(urls: string[], sourceUrl?: string): string | null {
+  const officialUrls = urls.filter(url => isOfficialDomain(url));
+  if (officialUrls.length > 0) {
+    return officialUrls[0];
+  }
+  if (sourceUrl && isOfficialDomain(sourceUrl)) {
+    return sourceUrl;
+  }
+  return null;
+}
+
 // Robust fallback content generator for job bulletins (zero-API fallback)
 function fallbackBulletGenerator(documentText: string, userInstructions?: string, sourceUrl?: string) {
   const text = documentText || '';
@@ -251,8 +299,25 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
   const short_info_en = `Online applications are invited from eligible candidates for the recruitment of ${post_name} in ${department}. Eligible and interested candidates can read the complete notification detail below and apply online before the closing date.`;
   const short_info_hi = `${department} द्वारा ${post_name} के पदों पर भर्ती के लिए ऑनलाइन आवेदन आमंत्रित किए गए हैं। इच्छुक उम्मीदवार अधिसूचना को पढ़कर ऑनलाइन आवेदन कर सकते हैं।`;
 
-  const safeUrl = '';
-  const originUrl = '';
+  const scrapedUrls = extractUrlsFromText(text);
+  const applyLink = findApplyLink(scrapedUrls, sourceUrl) || '';
+  const notificationLink = findNotificationLink(scrapedUrls) || '';
+  const officialWebsite = findOfficialWebsite(scrapedUrls, sourceUrl) || '';
+
+  const importantLinksHtml = `
+    <div class="card p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 shadow-sm mt-4">
+      <h3 class="font-bold text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1.5 text-sm mb-3">🔗 Important Links</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <tbody>
+            <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Apply Online</td><td class="p-2 border border-slate-200 dark:border-slate-700">${applyLink ? `<a href="${applyLink}" target="_blank" class="text-primary hover:underline">Click Here</a>` : 'Not available yet'}</td></tr>
+            <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Download Notification</td><td class="p-2 border border-slate-200 dark:border-slate-700">${notificationLink ? `<a href="${notificationLink}" target="_blank" class="text-primary hover:underline">Click Here</a>` : 'Not available yet'}</td></tr>
+            <tr><td class="p-2 border border-slate-200 dark:border-slate-700 font-semibold">Official Website</td><td class="p-2 border border-slate-200 dark:border-slate-700">${officialWebsite ? `<a href="${officialWebsite}" target="_blank" class="text-primary hover:underline">Visit</a>` : 'Not available yet'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 
   const bilingual_html = `
 <div class="mb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
@@ -333,11 +398,11 @@ function fallbackBulletGenerator(documentText: string, userInstructions?: string
     admit_card_date: null,
     exam_date: null,
     result_date: null,
-    apply_link: '',
-    notification_link: '',
+    apply_link: applyLink,
+    notification_link: notificationLink,
     admit_card_link: '',
     result_link: '',
-    official_website: '',
+    official_website: officialWebsite,
     short_info_en,
     short_info_hi,
     state: ['National'],
@@ -943,7 +1008,7 @@ app.post('/api/scrape-website', async (req, res) => {
     // Extract useful links from the "Important Links" table specifically
     $('table').each((i, table) => {
       const tableTextLower = $(table).text().toLowerCase();
-      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here')) {
+      if (tableTextLower.includes('useful') || tableTextLower.includes('important link') || tableTextLower.includes('click here') || tableTextLower.includes('apply online') || tableTextLower.includes('notification')) {
         $(table).find('tr').each((j, tr) => {
           const cols = $(tr).find('td');
           if (cols.length >= 2) {
@@ -965,6 +1030,24 @@ app.post('/api/scrape-website', async (req, res) => {
         });
       }
     });
+
+    // If no explicit useful links were detected, derive important links from page anchors
+    if (Object.keys(extractedLinks).length === 0) {
+      for (const link of allPageLinks) {
+        const lowerText = link.text.toLowerCase();
+        const lowerUrl = link.url.toLowerCase();
+
+        if (!extractedLinks['Apply Online'] && /apply|registration|register|form|submit/i.test(lowerText + ' ' + lowerUrl)) {
+          extractedLinks['Apply Online'] = link.url;
+        }
+        if (!extractedLinks['Download Notification'] && /notification|advertisement|advt|pdf|circular|notice/i.test(lowerText + ' ' + lowerUrl)) {
+          extractedLinks['Download Notification'] = link.url;
+        }
+        if (!extractedLinks['Official Website'] && isOfficialDomain(link.url)) {
+          extractedLinks['Official Website'] = link.url;
+        }
+      }
+    }
 
     // Step 1: NOW replace anchor tags with text+URL format for text extraction
     $('a[href]').each((i, el) => {
@@ -1228,7 +1311,14 @@ app.post('/api/scrape-website', async (req, res) => {
     }
 
     console.log(`[Scraper] Structured extraction complete. Structured: ${structuredOutput.length} chars, Total: ${finalOutput.length} chars`);
-    res.json({ text: finalOutput, method: scrapeMethod, isFallback: false });
+    res.json({ 
+      text: finalOutput, 
+      method: scrapeMethod, 
+      isFallback: false, 
+      pageLinks: allPageLinks,
+      usefulLinks: extractedLinks,
+      documentLinks: uniquePdfLinks
+    });
   } catch (err: any) {
     console.error('Error scraping website:', err);
     res.status(500).json({ error: `Failed to read website: ${err.message || err}` });
