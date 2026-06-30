@@ -2405,7 +2405,12 @@ async function setupServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // SPA fallback — only for non-API routes
     app.get('*', (req, res) => {
+      // Don't catch API routes — let them 404 properly
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
