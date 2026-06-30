@@ -2205,6 +2205,7 @@ interface QueueState {
   tasks: QueueTask[];
   isProcessing: boolean;
   isPaused: boolean;
+  cancelRequested: boolean;
   lastUpdated: string;
 }
 
@@ -2214,10 +2215,17 @@ function loadQueue(): QueueState {
   try {
     if (fs.existsSync(QUEUE_FILE)) {
       const data = fs.readFileSync(QUEUE_FILE, 'utf-8');
-      return JSON.parse(data);
+      const queue = JSON.parse(data);
+      return {
+        tasks: queue.tasks || [],
+        isProcessing: queue.isProcessing ?? false,
+        isPaused: queue.isPaused ?? false,
+        cancelRequested: queue.cancelRequested ?? false,
+        lastUpdated: queue.lastUpdated || new Date().toISOString(),
+      };
     }
   } catch (e) {}
-  return { tasks: [], isProcessing: false, isPaused: false, lastUpdated: new Date().toISOString() };
+  return { tasks: [], isProcessing: false, isPaused: false, cancelRequested: false, lastUpdated: new Date().toISOString() };
 }
 
 function saveQueue(state: QueueState) {
@@ -2227,10 +2235,10 @@ function saveQueue(state: QueueState) {
 
 let queueProcessing = false;
 
-function cancelPendingTasks(state: QueueState) {
+function cancelActiveAndPendingTasks(state: QueueState) {
   let cancelled = 0;
   state.tasks.forEach(task => {
-    if (task.status === 'pending') {
+    if (['pending', 'scraping', 'generating', 'saving'].includes(task.status)) {
       task.status = 'cancelled';
       task.currentStep = 'Cancelled';
       task.error = undefined;
@@ -2241,11 +2249,19 @@ function cancelPendingTasks(state: QueueState) {
   return cancelled;
 }
 
+function shouldAbortQueue(state: QueueState) {
+  return state.isPaused || state.cancelRequested;
+}
+
 // Process a single URL task
 async function processQueueTask(task: QueueTask, instructions: string = '') {
-  const state = loadQueue();
-  const taskIndex = state.tasks.findIndex(t => t.id === task.id);
+  let state = loadQueue();
+  let taskIndex = state.tasks.findIndex(t => t.id === task.id);
   if (taskIndex === -1) return;
+
+  if (state.cancelRequested || state.tasks[taskIndex].status === 'cancelled') {
+    return;
+  }
 
   try {
     // Step 1: Scrape
@@ -2267,6 +2283,12 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
     if (scrapeData.error) throw new Error(scrapeData.error);
     const text = scrapeData.text || '';
     if (!text.trim()) throw new Error('No content extracted from URL');
+
+    state = loadQueue();
+    taskIndex = state.tasks.findIndex(t => t.id === task.id);
+    if (taskIndex === -1 || state.cancelRequested || state.tasks[taskIndex].status === 'cancelled') {
+      return;
+    }
 
     state.tasks[taskIndex].scrapedTextLength = text.length;
     state.tasks[taskIndex].scrapedTextPreview = text.slice(0, 400);
@@ -2290,6 +2312,12 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
     });
     const genData = await genRes.json();
     if (genData.error) throw new Error(genData.error);
+
+    state = loadQueue();
+    taskIndex = state.tasks.findIndex(t => t.id === task.id);
+    if (taskIndex === -1 || state.cancelRequested || state.tasks[taskIndex].status === 'cancelled') {
+      return;
+    }
 
     // Step 3: Save to Supabase
     state.tasks[taskIndex].status = 'saving';
@@ -2394,14 +2422,14 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
     if (saveError) throw new Error(saveError.message);
 
     // Mark completed
-    const updatedState = loadQueue();
-    const idx = updatedState.tasks.findIndex(t => t.id === task.id);
+    state = loadQueue();
+    const idx = state.tasks.findIndex(t => t.id === task.id);
     if (idx !== -1) {
-      updatedState.tasks[idx].status = 'completed';
-      updatedState.tasks[idx].createdPostId = savedPost?.id;
-      updatedState.tasks[idx].createdPostTitle = savedPost?.title || genData.title_en;
-      updatedState.tasks[idx].updatedAt = new Date().toISOString();
-      saveQueue(updatedState);
+      state.tasks[idx].status = 'completed';
+      state.tasks[idx].createdPostId = savedPost?.id;
+      state.tasks[idx].createdPostTitle = savedPost?.title || genData.title_en;
+      state.tasks[idx].updatedAt = new Date().toISOString();
+      saveQueue(state);
     }
 
     console.log(`[Queue] ✅ Completed: ${genData.title_en}`);
@@ -2445,10 +2473,11 @@ async function processQueue() {
 
   for (const task of pendingTasks) {
     const currentState = loadQueue();
-    if (currentState.isPaused) break;
+    if (shouldAbortQueue(currentState)) break;
     if (currentState.tasks.every(t => t.status !== 'pending')) break;
 
     await processQueueTask(task, task.instructions || '');
+    if (loadQueue().cancelRequested) break;
     // Small delay between tasks to avoid rate limiting
     await new Promise(r => setTimeout(r, 3000));
   }
@@ -2480,6 +2509,7 @@ app.post('/api/queue/add', (req, res) => {
     }));
 
   state.tasks.push(...newTasks);
+  state.cancelRequested = false;
   saveQueue(state);
 
   // Start background processing
@@ -2516,7 +2546,10 @@ app.post('/api/queue/clear', (req, res) => {
   const state = loadQueue();
   
   if (clearType === 'all') {
-    state.tasks = state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status));
+    state.tasks = [];
+    state.isPaused = false;
+    state.cancelRequested = true;
+    state.isProcessing = false;
   } else if (clearType === 'completed') {
     state.tasks = state.tasks.filter(t => t.status !== 'completed');
   } else if (clearType === 'failed') {
@@ -2534,6 +2567,7 @@ app.post('/api/queue/clear', (req, res) => {
 app.post('/api/queue/pause', (req, res) => {
   const state = loadQueue();
   state.isPaused = true;
+  state.cancelRequested = false;
   state.isProcessing = false;
   saveQueue(state);
   res.json({ success: true, paused: true });
@@ -2542,6 +2576,7 @@ app.post('/api/queue/pause', (req, res) => {
 app.post('/api/queue/resume', (req, res) => {
   const state = loadQueue();
   state.isPaused = false;
+  state.cancelRequested = false;
   saveQueue(state);
   setTimeout(() => processQueue(), 500);
   res.json({ success: true, paused: false });
@@ -2549,8 +2584,9 @@ app.post('/api/queue/resume', (req, res) => {
 
 app.post('/api/queue/kill', (req, res) => {
   const state = loadQueue();
-  const cancelled = cancelPendingTasks(state);
+  const cancelled = cancelActiveAndPendingTasks(state);
   state.isPaused = true;
+  state.cancelRequested = true;
   state.isProcessing = false;
   saveQueue(state);
   res.json({ success: true, cancelled });

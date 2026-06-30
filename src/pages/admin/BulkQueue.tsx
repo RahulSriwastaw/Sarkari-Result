@@ -53,6 +53,7 @@ export default function BulkQueue() {
   const [isPausing, setIsPausing] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [isKilling, setIsKilling] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchStatus = async () => {
@@ -60,7 +61,10 @@ export default function BulkQueue() {
       const res = await fetch('/api/queue/status');
       const data = await res.json();
       setStatus(data);
-    } catch {}
+    } catch (err) {
+      console.error('Unable to fetch queue status:', err);
+      setStatus(null);
+    }
   };
 
   useEffect(() => {
@@ -93,12 +97,21 @@ export default function BulkQueue() {
   };
 
   const handleClear = async (type: string) => {
-    await fetch('/api/queue/clear', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clearType: type })
-    });
-    fetchStatus();
+    setIsClearing(true);
+    try {
+      const res = await fetch('/api/queue/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clearType: type })
+      });
+      const data = await res.json();
+      setMessage(`✅ Cleared ${type} tasks. ${data.remaining} tasks remain.`);
+      await fetchStatus();
+    } catch (err: any) {
+      setMessage(`❌ Clear failed: ${err.message}`);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   const handleRetryFailed = async () => {
@@ -185,12 +198,19 @@ export default function BulkQueue() {
             <p className="text-xs text-slate-500">Add URLs → Server processes in background → Posts saved as drafts</p>
           </div>
         </div>
-        {status?.isProcessing && (
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Processing...
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {status?.isProcessing && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Processing...
+            </span>
+          )}
+          {status?.isPaused && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
+              ⏸ Paused
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -248,13 +268,17 @@ export default function BulkQueue() {
             <Play className="w-3.5 h-3.5" />
             {loading ? 'Adding...' : 'Add & Start Processing'}
           </button>
-          <button onClick={() => handleClear('completed')} className="btn btn-secondary text-xs flex items-center gap-1.5">
+          <button onClick={() => handleClear('completed')} disabled={isClearing} className="btn btn-secondary text-xs flex items-center gap-1.5">
             <Trash2 className="w-3.5 h-3.5" />
             Clear Done
           </button>
-          <button onClick={() => handleClear('cancelled')} className="btn btn-secondary text-xs flex items-center gap-1.5">
+          <button onClick={() => handleClear('cancelled')} disabled={isClearing} className="btn btn-secondary text-xs flex items-center gap-1.5">
             <Trash2 className="w-3.5 h-3.5" />
             Clear Cancelled
+          </button>
+          <button onClick={() => handleClear('all')} disabled={isClearing} className="btn btn-secondary text-xs flex items-center gap-1.5">
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear All
           </button>
           <button onClick={handleRetryFailed} className="btn btn-secondary text-xs flex items-center gap-1.5">
             <RotateCcw className="w-3.5 h-3.5" />
@@ -301,6 +325,7 @@ export default function BulkQueue() {
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                   task.status === 'completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30' :
                   task.status === 'failed' ? 'bg-red-50 text-red-600 dark:bg-red-950/30' :
+                  task.status === 'cancelled' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30' :
                   task.status === 'pending' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' :
                   'bg-blue-50 text-blue-600 dark:bg-blue-950/30'
                 }`}>
