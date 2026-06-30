@@ -2073,6 +2073,327 @@ app.get('/sitemap-news.xml', (req, res) => {
   res.send(xml.trim());
 });
 
+// ==================== BACKGROUND URL QUEUE SYSTEM ====================
+// Tasks persist to disk — processing continues even if browser is closed
+
+interface QueueTask {
+  id: string;
+  url: string;
+  status: 'pending' | 'scraping' | 'generating' | 'saving' | 'completed' | 'failed';
+  error?: string;
+  createdPostId?: string;
+  createdPostTitle?: string;
+  instructions?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface QueueState {
+  tasks: QueueTask[];
+  isProcessing: boolean;
+  lastUpdated: string;
+}
+
+const QUEUE_FILE = path.join(process.cwd(), 'queue-state.json');
+
+function loadQueue(): QueueState {
+  try {
+    if (fs.existsSync(QUEUE_FILE)) {
+      const data = fs.readFileSync(QUEUE_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {}
+  return { tasks: [], isProcessing: false, lastUpdated: new Date().toISOString() };
+}
+
+function saveQueue(state: QueueState) {
+  state.lastUpdated = new Date().toISOString();
+  fs.writeFileSync(QUEUE_FILE, JSON.stringify(state, null, 2));
+}
+
+let queueProcessing = false;
+
+// Process a single URL task
+async function processQueueTask(task: QueueTask, instructions: string = '') {
+  const state = loadQueue();
+  const taskIndex = state.tasks.findIndex(t => t.id === task.id);
+  if (taskIndex === -1) return;
+
+  try {
+    // Step 1: Scrape
+    state.tasks[taskIndex].status = 'scraping';
+    state.tasks[taskIndex].updatedAt = new Date().toISOString();
+    saveQueue(state);
+
+    console.log(`[Queue] Scraping: ${task.url}`);
+    const scrapeRes = await fetch(`http://localhost:${PORT}/api/scrape-website`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: task.url })
+    });
+    const scrapeData = await scrapeRes.json();
+    if (scrapeData.error) throw new Error(scrapeData.error);
+    const text = scrapeData.text || '';
+    if (!text.trim()) throw new Error('No content extracted from URL');
+
+    // Step 2: Generate post with AI
+    state.tasks[taskIndex].status = 'generating';
+    state.tasks[taskIndex].updatedAt = new Date().toISOString();
+    saveQueue(state);
+
+    console.log(`[Queue] Generating AI post for: ${task.url}`);
+    const genRes = await fetch(`http://localhost:${PORT}/api/generate-bulletin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documentText: text,
+        userInstructions: instructions || 'Extract all details and write a complete post.',
+        sourceUrl: task.url
+      })
+    });
+    const genData = await genRes.json();
+    if (genData.error) throw new Error(genData.error);
+
+    // Step 3: Save to Supabase
+    state.tasks[taskIndex].status = 'saving';
+    state.tasks[taskIndex].updatedAt = new Date().toISOString();
+    saveQueue(state);
+
+    console.log(`[Queue] Saving post: ${genData.title_en || 'Untitled'}`);
+    
+    // Import supabase client for server-side
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const slug = (genData.title_en || `draft-${Date.now()}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 80);
+
+    const toDate = (val: any) => {
+      if (!val || typeof val !== 'string') return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val.trim())) return val.trim();
+      return null;
+    };
+
+    const postData: any = {
+      slug,
+      title: genData.title_en || 'Draft Post',
+      title_hindi: genData.title_hi || null,
+      post_name: genData.post_name || null,
+      department: genData.department || null,
+      advt_no: genData.advt_no || null,
+      total_vacancies: genData.vacancies ? parseInt(String(genData.vacancies)) : null,
+      vacancies: genData.vacancies ? parseInt(String(genData.vacancies)) : null,
+      eligibility: genData.eligibility_criteria || {},
+      start_date: toDate(genData.start_date),
+      end_date: toDate(genData.end_date),
+      admit_card_date: toDate(genData.admit_card_date),
+      exam_date: toDate(genData.exam_date),
+      result_date: toDate(genData.result_date),
+      apply_link: genData.apply_link || null,
+      notification_link: genData.notification_link || null,
+      official_website: genData.official_website || null,
+      official_site: genData.official_website || null,
+      bilingual_html: genData.bilingual_html || '',
+      short_info_en: genData.short_info_en || null,
+      short_info_hi: genData.short_info_hi || null,
+      excerpt: genData.short_info_en || null,
+      category_id: null, // Will be set based on suggested_category
+      tags: genData.tags || [],
+      state: genData.state || [],
+      source_type: 'url',
+      source_url: task.url,
+      meta_title: genData.meta_title || genData.title_en || null,
+      meta_description: genData.meta_description || genData.short_info_en || null,
+      focus_keyword: genData.focus_keyword || null,
+      keywords: genData.tags || [],
+      status: 'draft',
+    };
+
+    // Map suggested_category to category_id
+    if (genData.suggested_category) {
+      const { data: cats } = await supabase.from('categories').select('id, slug').eq('slug', genData.suggested_category);
+      if (cats && cats.length > 0) {
+        postData.category_id = cats[0].id;
+      }
+    }
+
+    // Remove null/undefined fields
+    Object.keys(postData).forEach(k => {
+      if (postData[k] === undefined || postData[k] === null) delete postData[k];
+    });
+
+    const { data: savedPost, error: saveError } = await supabase
+      .from('posts')
+      .insert(postData)
+      .select('id, title')
+      .single();
+
+    if (saveError) throw new Error(saveError.message);
+
+    // Mark completed
+    const updatedState = loadQueue();
+    const idx = updatedState.tasks.findIndex(t => t.id === task.id);
+    if (idx !== -1) {
+      updatedState.tasks[idx].status = 'completed';
+      updatedState.tasks[idx].createdPostId = savedPost?.id;
+      updatedState.tasks[idx].createdPostTitle = savedPost?.title || genData.title_en;
+      updatedState.tasks[idx].updatedAt = new Date().toISOString();
+      saveQueue(updatedState);
+    }
+
+    console.log(`[Queue] ✅ Completed: ${genData.title_en}`);
+  } catch (err: any) {
+    console.error(`[Queue] ❌ Failed: ${task.url} — ${err.message}`);
+    const updatedState = loadQueue();
+    const idx = updatedState.tasks.findIndex(t => t.id === task.id);
+    if (idx !== -1) {
+      updatedState.tasks[idx].status = 'failed';
+      updatedState.tasks[idx].error = err.message;
+      updatedState.tasks[idx].updatedAt = new Date().toISOString();
+      saveQueue(updatedState);
+    }
+  }
+}
+
+// Background queue processor — runs continuously
+async function processQueue() {
+  if (queueProcessing) return;
+  queueProcessing = true;
+
+  const state = loadQueue();
+  const pendingTasks = state.tasks.filter(t => t.status === 'pending');
+
+  if (pendingTasks.length === 0) {
+    queueProcessing = false;
+    state.isProcessing = false;
+    saveQueue(state);
+    return;
+  }
+
+  state.isProcessing = true;
+  saveQueue(state);
+
+  for (const task of pendingTasks) {
+    await processQueueTask(task, task.instructions || '');
+    // Small delay between tasks to avoid rate limiting
+    await new Promise(r => setTimeout(r, 3000));
+  }
+
+  queueProcessing = false;
+  const finalState = loadQueue();
+  finalState.isProcessing = false;
+  saveQueue(finalState);
+  console.log(`[Queue] All pending tasks processed.`);
+}
+
+// API: Add URLs to queue
+app.post('/api/queue/add', (req, res) => {
+  const { urls, instructions } = req.body;
+  if (!urls || !Array.isArray(urls) || urls.length === 0) {
+    return res.status(400).json({ error: 'urls array is required' });
+  }
+
+  const state = loadQueue();
+  const newTasks: QueueTask[] = urls
+    .filter((u: string) => u && u.trim().length > 5)
+    .map((url: string) => ({
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      url: url.trim(),
+      status: 'pending' as const,
+      instructions: instructions || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+
+  state.tasks.push(...newTasks);
+  saveQueue(state);
+
+  // Start background processing
+  setTimeout(() => processQueue(), 500);
+
+  res.json({ 
+    success: true, 
+    added: newTasks.length, 
+    totalPending: state.tasks.filter(t => t.status === 'pending').length,
+    message: `${newTasks.length} URLs added to queue. Processing started in background.`
+  });
+});
+
+// API: Get queue status
+app.get('/api/queue/status', (req, res) => {
+  const state = loadQueue();
+  const summary = {
+    total: state.tasks.length,
+    pending: state.tasks.filter(t => t.status === 'pending').length,
+    processing: state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status)).length,
+    completed: state.tasks.filter(t => t.status === 'completed').length,
+    failed: state.tasks.filter(t => t.status === 'failed').length,
+    isProcessing: state.isProcessing || queueProcessing,
+    lastUpdated: state.lastUpdated,
+  };
+  res.json({ ...summary, tasks: state.tasks.slice(-50) }); // Last 50 tasks
+});
+
+// API: Clear completed/failed tasks
+app.post('/api/queue/clear', (req, res) => {
+  const { clearType } = req.body; // 'completed', 'failed', 'all'
+  const state = loadQueue();
+  
+  if (clearType === 'all') {
+    state.tasks = state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status));
+  } else if (clearType === 'completed') {
+    state.tasks = state.tasks.filter(t => t.status !== 'completed');
+  } else if (clearType === 'failed') {
+    state.tasks = state.tasks.filter(t => t.status !== 'failed');
+  }
+  
+  saveQueue(state);
+  res.json({ success: true, remaining: state.tasks.length });
+});
+
+// API: Retry failed tasks
+app.post('/api/queue/retry-failed', (req, res) => {
+  const state = loadQueue();
+  let retried = 0;
+  state.tasks.forEach(t => {
+    if (t.status === 'failed') {
+      t.status = 'pending';
+      t.error = undefined;
+      t.updatedAt = new Date().toISOString();
+      retried++;
+    }
+  });
+  saveQueue(state);
+
+  if (retried > 0) {
+    setTimeout(() => processQueue(), 500);
+  }
+
+  res.json({ success: true, retried });
+});
+
+// On server start, resume any pending tasks from last session
+function resumeQueueOnStartup() {
+  const state = loadQueue();
+  const pending = state.tasks.filter(t => t.status === 'pending');
+  const stuck = state.tasks.filter(t => ['scraping', 'generating', 'saving'].includes(t.status));
+  
+  // Reset stuck tasks back to pending
+  stuck.forEach(t => { t.status = 'pending'; t.updatedAt = new Date().toISOString(); });
+  if (stuck.length > 0) saveQueue(state);
+
+  if (pending.length > 0 || stuck.length > 0) {
+    console.log(`[Queue] Resuming ${pending.length + stuck.length} pending tasks from previous session...`);
+    setTimeout(() => processQueue(), 5000); // Wait 5s for server to fully boot
+  }
+}
+
 // Configure Vite middleware or static serving
 async function setupServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -2091,6 +2412,7 @@ async function setupServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[ResultVeda] Server successfully running on http://localhost:${PORT}`);
+    resumeQueueOnStartup();
   });
 }
 

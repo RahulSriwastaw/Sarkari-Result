@@ -29,6 +29,7 @@ import Posts from './pages/admin/Posts';
 import PostForm from './pages/admin/PostForm';
 import Categories from './pages/admin/Categories';
 import AIGenerator from './pages/admin/AIGenerator';
+import BulkQueue from './pages/admin/BulkQueue';
 
 // Public Layout containing standard header/footer wrappers
 function PublicLayout() {
@@ -103,6 +104,7 @@ export default function App() {
         <Route path="posts/edit/:id" element={<PostForm />} />
         <Route path="categories" element={<Categories />} />
         <Route path="ai-generator" element={<AIGenerator />} />
+        <Route path="bulk-queue" element={<BulkQueue />} />
       </Route>
     </Routes>
   );

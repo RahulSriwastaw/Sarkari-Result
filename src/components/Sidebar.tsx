@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, FolderTree, ExternalLink, LogOut, ShieldAlert, Sparkles } from 'lucide-react';
+import { LayoutDashboard, FileText, FolderTree, ExternalLink, LogOut, ShieldAlert, Sparkles, ListPlus } from 'lucide-react';
 import { adminLogout } from '../lib/supabase';
 
 export default function Sidebar() {
@@ -63,6 +63,14 @@ export default function Sidebar() {
             >
               <Sparkles />
               <span className="nav-label">AI Content Desk</span>
+            </NavLink>
+
+            <NavLink
+              to="/veda-admin-6721/bulk-queue"
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            >
+              <ListPlus />
+              <span className="nav-label">Bulk URL Queue</span>
             </NavLink>
           </nav>
 
