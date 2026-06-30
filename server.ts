@@ -10,6 +10,14 @@ import * as cheerio from 'cheerio';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production' || process.argv.some(arg => path.basename(arg) === 'server.cjs');
+
+console.log('[ResultVeda] Environment detection:', {
+  NODE_ENV: process.env.NODE_ENV,
+  argv: process.argv,
+  isProduction,
+});
+
 // Helper to handle robust model fallbacks and transient retries (503/429) for Gemini API
 async function generateContentWithFallback(
   ai: GoogleGenAI,
@@ -2084,6 +2092,21 @@ interface QueueTask {
   createdPostId?: string;
   createdPostTitle?: string;
   instructions?: string;
+  currentStep?: string;
+  scrapedTextPreview?: string;
+  scrapedTextLength?: number;
+  generatedFields?: {
+    title_en?: string;
+    department?: string;
+    vacancies?: number;
+    advt_no?: string;
+    start_date?: string;
+    end_date?: string;
+    apply_link?: string;
+    notification_link?: string;
+    official_website?: string;
+    short_info_en?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -2126,6 +2149,10 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
     saveQueue(state);
 
     console.log(`[Queue] Scraping: ${task.url}`);
+    state.tasks[taskIndex].currentStep = 'Scraping website content';
+    state.tasks[taskIndex].updatedAt = new Date().toISOString();
+    saveQueue(state);
+
     const scrapeRes = await fetch(`http://localhost:${PORT}/api/scrape-website`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2136,8 +2163,13 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
     const text = scrapeData.text || '';
     if (!text.trim()) throw new Error('No content extracted from URL');
 
+    state.tasks[taskIndex].scrapedTextLength = text.length;
+    state.tasks[taskIndex].scrapedTextPreview = text.slice(0, 400);
+    saveQueue(state);
+
     // Step 2: Generate post with AI
     state.tasks[taskIndex].status = 'generating';
+    state.tasks[taskIndex].currentStep = 'AI is generating post draft';
     state.tasks[taskIndex].updatedAt = new Date().toISOString();
     saveQueue(state);
 
@@ -2156,16 +2188,36 @@ async function processQueueTask(task: QueueTask, instructions: string = '') {
 
     // Step 3: Save to Supabase
     state.tasks[taskIndex].status = 'saving';
+    state.tasks[taskIndex].currentStep = 'Saving generated post to database';
+    state.tasks[taskIndex].generatedFields = {
+      title_en: genData.title_en,
+      department: genData.department,
+      vacancies: genData.vacancies ? parseInt(String(genData.vacancies)) : undefined,
+      advt_no: genData.advt_no,
+      start_date: genData.start_date,
+      end_date: genData.end_date,
+      apply_link: genData.apply_link,
+      notification_link: genData.notification_link,
+      official_website: genData.official_website,
+      short_info_en: genData.short_info_en,
+    };
     state.tasks[taskIndex].updatedAt = new Date().toISOString();
     saveQueue(state);
 
     console.log(`[Queue] Saving post: ${genData.title_en || 'Untitled'}`);
     
-    // Import supabase client for server-side
+    // Import supabase client for server-side queue processing.
+    // On Node 20+, Supabase realtime initialization requires a transport implementation.
     const { createClient } = await import('@supabase/supabase-js');
     const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
     const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const wsModule = await import('ws');
+    const wsTransport = wsModule.default ?? wsModule;
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      realtime: {
+        transport: wsTransport,
+      },
+    });
 
     const slug = (genData.title_en || `draft-${Date.now()}`)
       .toLowerCase()
@@ -2396,7 +2448,7 @@ function resumeQueueOnStartup() {
 
 // Configure Vite middleware or static serving
 async function setupServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

@@ -12,6 +12,21 @@ interface QueueTask {
   error?: string;
   createdPostId?: string;
   createdPostTitle?: string;
+  currentStep?: string;
+  scrapedTextPreview?: string;
+  scrapedTextLength?: number;
+  generatedFields?: {
+    title_en?: string;
+    department?: string;
+    vacancies?: number;
+    advt_no?: string;
+    start_date?: string;
+    end_date?: string;
+    apply_link?: string;
+    notification_link?: string;
+    official_website?: string;
+    short_info_en?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -204,25 +219,56 @@ export default function BulkQueue() {
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
           {status?.tasks.slice().reverse().map(task => (
-            <div key={task.id} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-              {getStatusIcon(task.status)}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{task.url}</p>
-                {task.createdPostTitle && (
-                  <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">→ {task.createdPostTitle}</p>
-                )}
-                {task.error && (
-                  <p className="text-[10px] text-red-500 mt-0.5">{task.error}</p>
-                )}
+            <div key={task.id} className="px-4 py-3 space-y-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b last:border-b-0">
+              <div className="flex items-start gap-3">
+                {getStatusIcon(task.status)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{task.url}</p>
+                  {task.currentStep && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{task.currentStep}</p>
+                  )}
+                  {task.createdPostTitle && (
+                    <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">→ {task.createdPostTitle}</p>
+                  )}
+                  {task.error && (
+                    <p className="text-[10px] text-red-500 mt-0.5">{task.error}</p>
+                  )}
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  task.status === 'completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30' :
+                  task.status === 'failed' ? 'bg-red-50 text-red-600 dark:bg-red-950/30' :
+                  task.status === 'pending' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' :
+                  'bg-blue-50 text-blue-600 dark:bg-blue-950/30'
+                }`}>
+                  {getStatusLabel(task.status)}
+                </span>
               </div>
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                task.status === 'completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30' :
-                task.status === 'failed' ? 'bg-red-50 text-red-600 dark:bg-red-950/30' :
-                task.status === 'pending' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' :
-                'bg-blue-50 text-blue-600 dark:bg-blue-950/30'
-              }`}>
-                {getStatusLabel(task.status)}
-              </span>
+
+              {task.scrapedTextLength && (
+                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  <span>Scraped size: {task.scrapedTextLength.toLocaleString()} chars</span>
+                  <span>Updated: {new Date(task.updatedAt).toLocaleString()}</span>
+                </div>
+              )}
+
+              {task.scrapedTextPreview && (
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-950 p-3 text-[10px] text-slate-600 dark:text-slate-300 font-mono overflow-x-auto">
+                  {task.scrapedTextPreview}{task.scrapedTextLength && task.scrapedTextPreview.length < task.scrapedTextLength ? '...' : ''}
+                </div>
+              )}
+
+              {task.generatedFields && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  {task.generatedFields.title_en && <div><strong className="text-slate-700 dark:text-slate-200">Title:</strong> {task.generatedFields.title_en}</div>}
+                  {task.generatedFields.department && <div><strong className="text-slate-700 dark:text-slate-200">Department:</strong> {task.generatedFields.department}</div>}
+                  {typeof task.generatedFields.vacancies === 'number' && <div><strong className="text-slate-700 dark:text-slate-200">Vacancies:</strong> {task.generatedFields.vacancies}</div>}
+                  {task.generatedFields.advt_no && <div><strong className="text-slate-700 dark:text-slate-200">Advt No:</strong> {task.generatedFields.advt_no}</div>}
+                  {task.generatedFields.start_date && <div><strong className="text-slate-700 dark:text-slate-200">Start:</strong> {task.generatedFields.start_date}</div>}
+                  {task.generatedFields.end_date && <div><strong className="text-slate-700 dark:text-slate-200">End:</strong> {task.generatedFields.end_date}</div>}
+                  {task.generatedFields.apply_link && <div><strong className="text-slate-700 dark:text-slate-200">Apply:</strong> {task.generatedFields.apply_link}</div>}
+                  {task.generatedFields.notification_link && <div><strong className="text-slate-700 dark:text-slate-200">Notification:</strong> {task.generatedFields.notification_link}</div>}
+                </div>
+              )}
             </div>
           ))}
           {(!status?.tasks || status.tasks.length === 0) && (
