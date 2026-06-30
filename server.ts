@@ -1043,11 +1043,29 @@ app.post('/api/scrape-website', async (req, res) => {
     $('a[href]').each((i, el) => {
       const linkText = $(el).text().trim();
       const linkUrl = $(el).attr('href') || '';
-      if (linkText && linkUrl && !linkUrl.startsWith('javascript:') && !linkUrl.startsWith('#')) {
+      if (linkText && linkUrl && !linkUrl.startsWith('javascript:') && !linkUrl.startsWith('#') && linkUrl.length > 5) {
         try {
           const absoluteUrl = new URL(linkUrl, targetUrl).toString();
           allPageLinks.push({ text: linkText, url: absoluteUrl });
         } catch {}
+      }
+      // Also check onclick for URLs
+      const onclick = $(el).attr('onclick') || '';
+      const onclickUrl = onclick.match(/https?:\/\/[^\s'"]+/);
+      if (onclickUrl && linkText) {
+        allPageLinks.push({ text: linkText, url: onclickUrl[0] });
+      }
+    });
+
+    // Also extract ALL URLs from the raw HTML (catches hidden/JS links)
+    const allHtmlUrls = html.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+    const govUrls = allHtmlUrls.filter(u => 
+      u.includes('.gov.in') || u.includes('.nic.in') || u.includes('.pdf')
+    );
+    // Add gov URLs that aren't already in allPageLinks
+    govUrls.forEach(u => {
+      if (!allPageLinks.some(l => l.url === u)) {
+        allPageLinks.push({ text: 'Official Link', url: u });
       }
     });
 
@@ -1060,16 +1078,23 @@ app.post('/api/scrape-website', async (req, res) => {
           if (cols.length >= 2) {
             const keyText = $(cols[0]).text().trim();
             // Get the actual URL from anchor tag in 2nd column
-            const linkEl = $(cols[1]).find('a[href]').first();
+            const linkEl = $(cols[1]).find('a[href]');
             let linkUrl = '';
-            if (linkEl.length > 0) {
-              const href = linkEl.attr('href') || '';
-              if (href && !href.startsWith('javascript:')) {
-                try { linkUrl = new URL(href, targetUrl).toString(); } catch {}
+            linkEl.each((k, a) => {
+              const href = $(a).attr('href') || '';
+              if (href && !href.startsWith('javascript:') && href.length > 5) {
+                try { 
+                  const absUrl = new URL(href, targetUrl).toString();
+                  if (!linkUrl) linkUrl = absUrl;
+                  // Prefer .gov.in links
+                  if (absUrl.includes('.gov.in') || absUrl.includes('.nic.in')) {
+                    linkUrl = absUrl;
+                  }
+                } catch {}
               }
-            }
+            });
             const valText = $(cols[1]).text().trim();
-            if (keyText && (linkUrl || valText)) {
+            if (keyText && keyText.length > 2 && (linkUrl || valText)) {
               extractedLinks[keyText] = linkUrl || valText;
             }
           }
@@ -1078,20 +1103,36 @@ app.post('/api/scrape-website', async (req, res) => {
     });
 
     // If no explicit useful links were detected, derive important links from page anchors
-    if (Object.keys(extractedLinks).length === 0) {
+    if (Object.keys(extractedLinks).length === 0 || !extractedLinks['Apply Online'] || !extractedLinks['Official Website']) {
       for (const link of allPageLinks) {
         const lowerText = link.text.toLowerCase();
         const lowerUrl = link.url.toLowerCase();
 
-        if (!extractedLinks['Apply Online'] && /apply|registration|register|form|submit/i.test(lowerText + ' ' + lowerUrl)) {
+        if (!extractedLinks['Apply Online'] && /apply|registration|register|candidate.*login/i.test(lowerText + ' ' + lowerUrl)) {
           extractedLinks['Apply Online'] = link.url;
         }
-        if (!extractedLinks['Download Notification'] && /notification|advertisement|advt|pdf|circular|notice/i.test(lowerText + ' ' + lowerUrl)) {
+        if (!extractedLinks['Download Notification'] && /notification|advertisement|advt|circular|notice/i.test(lowerText + ' ' + lowerUrl)) {
+          extractedLinks['Download Notification'] = link.url;
+        }
+        if (!extractedLinks['Download Notification'] && lowerUrl.endsWith('.pdf')) {
           extractedLinks['Download Notification'] = link.url;
         }
         if (!extractedLinks['Official Website'] && isOfficialDomain(link.url)) {
           extractedLinks['Official Website'] = link.url;
         }
+      }
+      // Also check govUrls directly from HTML
+      if (!extractedLinks['Official Website'] && govUrls.length > 0) {
+        const officialSite = govUrls.find(u => !u.includes('.pdf') && !u.includes('/apply'));
+        if (officialSite) extractedLinks['Official Website'] = officialSite;
+      }
+      if (!extractedLinks['Apply Online'] && govUrls.length > 0) {
+        const applyUrl = govUrls.find(u => u.includes('apply') || u.includes('registration') || u.includes('candidate'));
+        if (applyUrl) extractedLinks['Apply Online'] = applyUrl;
+      }
+      if (!extractedLinks['Download Notification'] && govUrls.length > 0) {
+        const pdfUrl = govUrls.find(u => u.includes('.pdf'));
+        if (pdfUrl) extractedLinks['Download Notification'] = pdfUrl;
       }
     }
 
