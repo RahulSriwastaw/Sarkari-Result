@@ -1,0 +1,6 @@
+{
+  "name": "ResultVeda",
+  "description": "ResultVeda: Get the latest Sarkari Result, Government Jobs, Admit Card, Answer Key, Syllabus and Exam Updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

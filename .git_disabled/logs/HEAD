@@ -1,0 +1,7 @@
+0000000000000000000000000000000000000000 e0bf43d41b64b5806e64773c0313e911b4907c26 BatchPDF Developer <developer@batchpdf.app> 1782810443 +0530	clone: from https://github.com/RahulSriwastaw/Sarkari-Result.git
+e0bf43d41b64b5806e64773c0313e911b4907c26 2aad4e1603e3bf4f88b7e9a033cbd78766de1487 BatchPDF Developer <developer@batchpdf.app> 1782820092 +0530	commit: fix: update package-lock after installing dependencies to resolve vite/client types
+2aad4e1603e3bf4f88b7e9a033cbd78766de1487 1db038bc758114bb24268485448ccdad48d2acb4 BatchPDF Developer <developer@batchpdf.app> 1782829769 +0530	commit: Deploy: server-side Supabase ws transport fix + BulkQueue preview updates
+1db038bc758114bb24268485448ccdad48d2acb4 1d52108749e2e4ba505069ae58354370057fc672 BatchPDF Developer <developer@batchpdf.app> 1782834536 +0530	commit: Fix scrape link extraction and auto-fill important links in admin PostForm
+1d52108749e2e4ba505069ae58354370057fc672 63f05133af8646d5dbcf0246e5bdb6582784cbf6 BatchPDF Developer <developer@batchpdf.app> 1782835083 +0530	commit: Add bulk queue pause/resume/kill controls and UI status updates
+63f05133af8646d5dbcf0246e5bdb6582784cbf6 064994e6825797103db62053defcd1f47cd35405 BatchPDF Developer <developer@batchpdf.app> 1782835725 +0530	commit: Fix queue clear/pause/kill behavior and admin bulk queue UI
+064994e6825797103db62053defcd1f47cd35405 9a6c85b830cf2dd873e1690087d8611488b46fc6 BatchPDF Developer <developer@batchpdf.app> 1782884718 +0530	pull origin main: Fast-forward
