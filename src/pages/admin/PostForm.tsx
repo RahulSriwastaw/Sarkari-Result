@@ -261,6 +261,45 @@ export default function PostForm() {
       setAiStatusMessage('');
     }
   };
+
+  // ===== Missing function: handleScrapeAndExtract =====
+  const handleScrapeAndExtract = async () => {
+    if (!websiteUrl) {
+      setAiErrorMessage('Please enter a valid URL.');
+      return;
+    }
+
+    setAiLoading(true);
+    setAiErrorMessage(null);
+    setAiSuccessMessage(null);
+    setAiStatusMessage('Scraping website content...');
+
+    try {
+      const res = await fetch('/api/scrape-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: websiteUrl })
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setAiExtractedText(data.text || '');
+      setAiSuccessMessage(`Successfully scraped and extracted content from the URL!`);
+    } catch (err: any) {
+      console.error(err);
+      setAiErrorMessage(`Failed to scrape URL: ${err.message || err}`);
+    } finally {
+      setAiLoading(false);
+      setAiStatusMessage('');
+    }
+  };
+
+  // ===== Missing function: handleGenerateFromScrapedText =====
+  const handleGenerateFromScrapedText = async () => {
     if (!aiExtractedText) {
       setAiErrorMessage('Please upload a PDF/DOCX or fetch a website URL first to extract context text.');
       return;
